@@ -1,0 +1,1701 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Unified SaaS Platform API - News Card Generator (news-card-pro) + Blog Automation (Liya)
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication
+  - name: templates
+    description: Card templates
+  - name: generate
+    description: Image generation
+  - name: history
+    description: Generated images history
+  - name: keys
+    description: API key management
+  - name: stats
+    description: Dashboard statistics
+  - name: sites
+    description: WordPress sites
+  - name: articles
+    description: Blog articles
+  - name: pipeline
+    description: Blog pipeline
+  - name: logs
+    description: Pipeline logs
+  - name: settings
+    description: System settings
+  - name: admin
+    description: Admin panel
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /templates:
+    get:
+      operationId: listTemplates
+      tags: [templates]
+      summary: List user templates
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+    post:
+      operationId: createTemplate
+      tags: [templates]
+      summary: Create a template
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTemplateBody"
+      responses:
+        "201":
+          description: Created template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+
+  /templates/{id}:
+    get:
+      operationId: getTemplate
+      tags: [templates]
+      summary: Get a template
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+        "404":
+          description: Not found
+    put:
+      operationId: updateTemplate
+      tags: [templates]
+      summary: Update a template
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTemplateBody"
+      responses:
+        "200":
+          description: Updated template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+    delete:
+      operationId: deleteTemplate
+      tags: [templates]
+      summary: Delete a template
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /generate:
+    post:
+      operationId: generateImage
+      tags: [generate]
+      summary: Generate a news card image
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateBody"
+      responses:
+        "201":
+          description: Generated image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GeneratedImage"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /history:
+    get:
+      operationId: listHistory
+      tags: [history]
+      summary: Get generation history
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: History list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HistoryResponse"
+
+  /keys/regenerate:
+    post:
+      operationId: regenerateApiKey
+      tags: [keys]
+      summary: Regenerate API key
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: New API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiKeyResponse"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get news card dashboard stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+
+  /stats/overview:
+    get:
+      operationId: getStatsOverview
+      tags: [stats]
+      summary: Get blog dashboard stats overview
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Stats overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsOverview"
+
+  /stats/pipeline:
+    get:
+      operationId: getPipelineStats
+      tags: [stats]
+      summary: Get pipeline performance stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pipeline stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStats"
+
+  /stats/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [stats]
+      summary: Get recent pipeline activity
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /sites:
+    get:
+      operationId: listSites
+      tags: [sites]
+      summary: List WordPress sites
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of sites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Site"
+    post:
+      operationId: createSite
+      tags: [sites]
+      summary: Create a site
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteBody"
+      responses:
+        "201":
+          description: Created site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+
+  /sites/{id}:
+    get:
+      operationId: getSite
+      tags: [sites]
+      summary: Get a site
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+    put:
+      operationId: updateSite
+      tags: [sites]
+      summary: Update a site
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteBody"
+      responses:
+        "200":
+          description: Updated site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+    delete:
+      operationId: deleteSite
+      tags: [sites]
+      summary: Delete a site
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /sites/{id}/agents:
+    get:
+      operationId: getSiteAgents
+      tags: [sites]
+      summary: Get site AI agents
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Site agents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteAgentsResponse"
+
+  /sites/{id}/agents/{agentKey}:
+    put:
+      operationId: updateSiteAgent
+      tags: [sites]
+      summary: Update a site agent prompt
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: agentKey
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentBody"
+      responses:
+        "200":
+          description: Updated agent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentPrompt"
+
+  /articles:
+    get:
+      operationId: listArticles
+      tags: [articles]
+      summary: List articles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: List of articles
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArticleListResponse"
+    post:
+      operationId: createArticle
+      tags: [articles]
+      summary: Manually trigger an article from a URL
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArticleBody"
+      responses:
+        "201":
+          description: Article created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Article"
+
+  /articles/{id}:
+    get:
+      operationId: getArticle
+      tags: [articles]
+      summary: Get article by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Article detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Article"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteArticle
+      tags: [articles]
+      summary: Delete an article
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /articles/{id}/retry:
+    post:
+      operationId: retryArticle
+      tags: [articles]
+      summary: Retry a failed article
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Retry triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Article"
+
+  /pipeline/run:
+    post:
+      operationId: runPipeline
+      tags: [pipeline]
+      summary: Manually run the pipeline
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pipeline started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineRunResponse"
+
+  /pipeline/status:
+    get:
+      operationId: getPipelineStatus
+      tags: [pipeline]
+      summary: Get current pipeline status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Pipeline status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStatus"
+
+  /logs:
+    get:
+      operationId: listLogs
+      tags: [logs]
+      summary: List pipeline logs
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: article_id
+          in: query
+          schema:
+            type: integer
+        - name: stage
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: List of logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogListResponse"
+
+  /settings:
+    get:
+      operationId: listSettings
+      tags: [settings]
+      summary: Get all settings
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: All settings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Setting"
+    put:
+      operationId: updateSettings
+      tags: [settings]
+      summary: Update settings
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSettingsBody"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Setting"
+
+  /settings/public:
+    get:
+      operationId: getPublicSettings
+      tags: [settings]
+      summary: Get public settings
+      responses:
+        "200":
+          description: Public settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSettings"
+
+  /settings/telegram:
+    get:
+      operationId: getBotStatus
+      tags: [settings]
+      summary: Get Telegram bot status
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Bot status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BotStatus"
+
+  /admin/stats:
+    get:
+      operationId: getAdminStats
+      tags: [admin]
+      summary: Get admin stats
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Admin stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStats"
+
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: List all users
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUsersResponse"
+
+  /admin/users/{id}:
+    put:
+      operationId: updateAdminUser
+      tags: [admin]
+      summary: Update a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminUserBody"
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminUser"
+    delete:
+      operationId: deleteAdminUser
+      tags: [admin]
+      summary: Delete a user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /admin/plans:
+    get:
+      operationId: listAdminPlans
+      tags: [admin]
+      summary: List all plans
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Plans list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Plan"
+    post:
+      operationId: createAdminPlan
+      tags: [admin]
+      summary: Create a plan
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanBody"
+      responses:
+        "201":
+          description: Created plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+
+  /admin/plans/{id}:
+    put:
+      operationId: updateAdminPlan
+      tags: [admin]
+      summary: Update a plan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlanBody"
+      responses:
+        "200":
+          description: Updated plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+    delete:
+      operationId: deleteAdminPlan
+      tags: [admin]
+      summary: Delete a plan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
+
+    RegisterBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        phone:
+          type: string
+          nullable: true
+      required: [name, email, password]
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required: [email, password]
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/UserProfile"
+      required: [token, user]
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        plan:
+          type: string
+        apiKey:
+          type: string
+        imagesToday:
+          type: integer
+        credits:
+          type: integer
+          nullable: true
+        articlesThisMonth:
+          type: integer
+          nullable: true
+        isAdmin:
+          type: boolean
+        botCode:
+          type: string
+          nullable: true
+        emailVerified:
+          type: boolean
+        phone:
+          type: string
+          nullable: true
+        planDetails:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, plan, apiKey, imagesToday, isAdmin, emailVerified, createdAt]
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+          nullable: true
+        backgroundUrl:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        overlayUrl:
+          type: string
+          nullable: true
+        elements:
+          type: string
+        category:
+          type: string
+        aspectRatio:
+          type: string
+        bannerColor:
+          type: string
+        bannerGradient:
+          type: string
+          nullable: true
+        textColor:
+          type: string
+        labelColor:
+          type: string
+        font:
+          type: string
+        fontSize:
+          type: integer
+        fontWeight:
+          type: integer
+        photoHeight:
+          type: integer
+        subtitle:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        logoText:
+          type: string
+          nullable: true
+        logoPos:
+          type: string
+        logoInvert:
+          type: boolean
+        textShadow:
+          type: boolean
+        headlineAlign:
+          type: string
+        subtitleAlign:
+          type: string
+        labelAlign:
+          type: string
+        watermarkText:
+          type: string
+          nullable: true
+        watermarkOpacity:
+          type: string
+        canvasLayout:
+          type: string
+          nullable: true
+        isPublic:
+          type: boolean
+        isApproved:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, userId, name, elements, category, aspectRatio, bannerColor, textColor, labelColor, font, fontSize, fontWeight, photoHeight, isPublic, isApproved, createdAt, updatedAt]
+
+    CreateTemplateBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          nullable: true
+        backgroundUrl:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        overlayUrl:
+          type: string
+          nullable: true
+        elements:
+          type: string
+        category:
+          type: string
+        aspectRatio:
+          type: string
+        bannerColor:
+          type: string
+        bannerGradient:
+          type: string
+          nullable: true
+        textColor:
+          type: string
+        labelColor:
+          type: string
+        font:
+          type: string
+        fontSize:
+          type: integer
+        fontWeight:
+          type: integer
+        photoHeight:
+          type: integer
+        subtitle:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        logoText:
+          type: string
+          nullable: true
+        logoPos:
+          type: string
+        logoInvert:
+          type: boolean
+        textShadow:
+          type: boolean
+        headlineAlign:
+          type: string
+        subtitleAlign:
+          type: string
+        labelAlign:
+          type: string
+        watermarkText:
+          type: string
+          nullable: true
+        watermarkOpacity:
+          type: string
+        canvasLayout:
+          type: string
+          nullable: true
+        isPublic:
+          type: boolean
+      required: [name]
+
+    GenerateBody:
+      type: object
+      properties:
+        templateId:
+          nullable: true
+        title:
+          type: string
+        subtitle:
+          type: string
+          nullable: true
+        label:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        aspectRatio:
+          type: string
+        bannerColor:
+          type: string
+          nullable: true
+        textColor:
+          type: string
+          nullable: true
+        font:
+          type: string
+          nullable: true
+      required: [title]
+
+    GeneratedImage:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        templateId:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        imageUrl:
+          type: string
+        aspectRatio:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, userId, title, imageUrl, aspectRatio, createdAt]
+
+    HistoryResponse:
+      type: object
+      properties:
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/GeneratedImage"
+        total:
+          type: integer
+      required: [images, total]
+
+    ApiKeyResponse:
+      type: object
+      properties:
+        apiKey:
+          type: string
+      required: [apiKey]
+
+    StatsResponse:
+      type: object
+      properties:
+        totalImages:
+          type: integer
+        imagesToday:
+          type: integer
+        totalTemplates:
+          type: integer
+        plan:
+          type: string
+        dailyLimit:
+          type: integer
+      required: [totalImages, imagesToday, totalTemplates, plan, dailyLimit]
+
+    StatsOverview:
+      type: object
+      properties:
+        total_articles:
+          type: integer
+        done:
+          type: integer
+        failed:
+          type: integer
+        pending:
+          type: integer
+        processing:
+          type: integer
+        published_today:
+          type: integer
+        success_rate:
+          type: number
+      required: [total_articles, done, failed, pending, processing, published_today, success_rate]
+
+    PipelineStats:
+      type: object
+      properties:
+        avg_duration_ms:
+          type: integer
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              stage:
+                type: string
+              success_count:
+                type: integer
+              failure_count:
+                type: integer
+              avg_duration_ms:
+                type: integer
+            required: [stage, success_count, failure_count, avg_duration_ms]
+      required: [avg_duration_ms, stages]
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        article_id:
+          type: integer
+          nullable: true
+        article_title:
+          type: string
+          nullable: true
+        stage:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, stage, status, created_at]
+
+    Site:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        wp_url:
+          type: string
+        wp_username:
+          type: string
+        rss_feed_url:
+          type: string
+        rss_poll_hours:
+          type: integer
+        auto_publish:
+          type: boolean
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required: [id, name, wp_url, wp_username, rss_feed_url, rss_poll_hours, auto_publish, is_active, created_at]
+
+    CreateSiteBody:
+      type: object
+      properties:
+        name:
+          type: string
+        wp_url:
+          type: string
+        wp_username:
+          type: string
+        wp_password:
+          type: string
+        rss_feed_url:
+          type: string
+        rss_poll_hours:
+          type: integer
+        auto_publish:
+          type: boolean
+        is_active:
+          type: boolean
+      required: [name, wp_url, wp_username, wp_password]
+
+    AgentPrompt:
+      type: object
+      properties:
+        id:
+          type: integer
+        site_id:
+          type: integer
+        agent_key:
+          type: string
+        agent_name:
+          type: string
+        system_message:
+          type: string
+        description:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, site_id, agent_key, agent_name, system_message, is_active, updated_at]
+
+    UpdateAgentBody:
+      type: object
+      properties:
+        system_message:
+          type: string
+        is_active:
+          type: boolean
+
+    SiteAgentsResponse:
+      type: object
+      properties:
+        prompts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentPrompt"
+      required: [prompts]
+
+    Article:
+      type: object
+      properties:
+        id:
+          type: integer
+        rss_link:
+          type: string
+        competitor_title:
+          type: string
+          nullable: true
+        meta_title:
+          type: string
+          nullable: true
+        meta_description:
+          type: string
+          nullable: true
+        primary_keyword:
+          type: string
+          nullable: true
+        generated_image_url:
+          type: string
+          nullable: true
+        final_image_url:
+          type: string
+          nullable: true
+        article_html:
+          type: string
+          nullable: true
+        wp_post_id:
+          type: integer
+          nullable: true
+        wp_post_url:
+          type: string
+          nullable: true
+        content_status:
+          type: string
+        image_status:
+          type: string
+        article_status:
+          type: string
+        error_message:
+          type: string
+          nullable: true
+        site_id:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, rss_link, content_status, image_status, article_status, created_at]
+
+    ArticleListResponse:
+      type: object
+      properties:
+        articles:
+          type: array
+          items:
+            $ref: "#/components/schemas/Article"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [articles, total, page, limit]
+
+    CreateArticleBody:
+      type: object
+      properties:
+        rss_link:
+          type: string
+      required: [rss_link]
+
+    PipelineRunResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        queued:
+          type: integer
+      required: [message, queued]
+
+    PipelineStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        running:
+          type: boolean
+        pending_count:
+          type: integer
+        processing_count:
+          type: integer
+        last_rss_check:
+          type: string
+          nullable: true
+          format: date-time
+        next_rss_check:
+          type: string
+          nullable: true
+          format: date-time
+      required: [enabled, running, pending_count, processing_count]
+
+    PipelineLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        article_id:
+          type: integer
+          nullable: true
+        stage:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+          nullable: true
+        duration_ms:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [id, stage, status, created_at]
+
+    LogListResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required: [logs, total, page, limit]
+
+    Setting:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+      required: [key, updated_at]
+
+    UpdateSettingsBody:
+      type: object
+      properties:
+        settings:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              value:
+                type: string
+            required: [key, value]
+      required: [settings]
+
+    PublicSettings:
+      type: object
+      properties:
+        googleClientId:
+          type: string
+          nullable: true
+
+    BotStatus:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        hasToken:
+          type: boolean
+        botUsername:
+          type: string
+          nullable: true
+        tokenSource:
+          type: string
+        tokenMasked:
+          type: string
+          nullable: true
+      required: [connected, hasToken, tokenSource]
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        priceMonthly:
+          type: integer
+        priceYearly:
+          type: integer
+        cardsPerDay:
+          type: integer
+        maxTemplates:
+          type: integer
+        apiAccess:
+          type: boolean
+        telegramBot:
+          type: boolean
+        isActive:
+          type: boolean
+      required: [id, name, slug, priceMonthly, priceYearly, cardsPerDay, maxTemplates, apiAccess, telegramBot, isActive]
+
+    CreatePlanBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        priceMonthly:
+          type: integer
+        priceYearly:
+          type: integer
+        cardsPerDay:
+          type: integer
+        maxTemplates:
+          type: integer
+        apiAccess:
+          type: boolean
+        telegramBot:
+          type: boolean
+        isActive:
+          type: boolean
+      required: [name, slug]
+
+    AdminStats:
+      type: object
+      properties:
+        totalUsers:
+          type: integer
+        proUsers:
+          type: integer
+        freeUsers:
+          type: integer
+        totalImages:
+          type: integer
+        todayImages:
+          type: integer
+      required: [totalUsers, proUsers, freeUsers, totalImages, todayImages]
+
+    AdminUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        plan:
+          type: string
+        isAdmin:
+          type: boolean
+        imagesToday:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, name, email, plan, isAdmin, imagesToday, createdAt]
+
+    AdminUsersResponse:
+      type: object
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminUser"
+        total:
+          type: integer
+      required: [users, total]
+
+    UpdateAdminUserBody:
+      type: object
+      properties:
+        plan:
+          type: string
+        isAdmin:
+          type: boolean
+        name:
+          type: string
+        email:
+          type: string
