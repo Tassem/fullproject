@@ -89,7 +89,7 @@ function Router() {
       <Route path="/rss-feeds"><ProtectedRoute component={RssFeeds} /></Route>
 
       <Route path="/landing" component={Landing} />
-      <Route path="/"><Redirect to="/dashboard" /></Route>
+      <Route path="/" component={Landing} />
       <Route component={NotFound} />
     </Switch>
   );
