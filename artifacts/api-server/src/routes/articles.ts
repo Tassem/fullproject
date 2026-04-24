@@ -168,6 +168,27 @@ router.post("/:id/retry", requireAuth, async (req, res) => {
   return res.json(updated);
 });
 
+// ── Regenerate image only ───────────────────────────────────────────────────
+router.post("/:id/regenerate-image", requireAuth, async (req, res) => {
+  const user = (req as any).user as typeof usersTable.$inferSelect;
+  const id = parseInt(req.params.id);
+
+  const [article] = await db.select().from(articlesTable).where(and(eq(articlesTable.id, id), eq(articlesTable.user_id, user.id))).limit(1);
+  if (!article) return res.status(404).json({ error: "Article not found" });
+
+  const [updated] = await db.update(articlesTable).set({
+    image_status: "pending",
+    generated_image_url: null,
+    final_image_url: null,
+    updated_at: new Date(),
+  }).where(and(eq(articlesTable.id, id), eq(articlesTable.user_id, user.id))).returning();
+
+  // Trigger pipeline in background
+  runPipeline().catch(err => console.error("[regenerate-image] pipeline trigger failed:", err));
+
+  return res.json(updated);
+});
+
 // ── Re-apply Rank Math to a single article ────────────────────────────────────
 router.post("/:id/rank-math", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;

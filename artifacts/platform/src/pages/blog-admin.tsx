@@ -1585,10 +1585,18 @@ function SystemTab() {
           { v: "kieai",    l: "kie.ai (FLUX)" },
           { v: "openai",   l: "DALL-E 3 (OpenAI)" },
           { v: "openrouter", l: "OpenRouter" },
+          { v: "nanobanana", l: "Nanobanana" },
           { v: "custom",   l: customProviderNames[1] },
           { v: "custom_2", l: customProviderNames[2] },
           { v: "custom_3", l: customProviderNames[3] },
         ]} />
+        {imgGenProvider === "nanobanana" && (
+          <Sel label="Credentials Source (Slot)" k="image_gen_custom_slot" options={[
+            { v: "",  l: `Slot 1 (${customProviderNames[1]})` },
+            { v: "2", l: `Slot 2 (${customProviderNames[2]})` },
+            { v: "3", l: `Slot 3 (${customProviderNames[3]})` },
+          ]} />
+        )}
         {imgGenProvider === "kieai" ? (
           <Sel label="Image Generation Model" k="image_gen_model" options={[
             { v: "flux-schnell", l: "FLUX Schnell (Fast)" },
@@ -2773,6 +2781,7 @@ function WebhookSetupButton() {
   const { toast } = useToast();
   const [loading, setLoading] = React.useState(false);
   const [webhookInfo, setWebhookInfo] = React.useState<{ url?: string; pending_update_count?: number } | null>(null);
+  const [customUrl, setCustomUrl] = React.useState("");
 
   const fetchInfo = React.useCallback(async () => {
     try {
@@ -2792,11 +2801,12 @@ function WebhookSetupButton() {
       const r = await fetch("/api/bot/setup-webhook", {
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("pro_token")}`, "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(customUrl.trim() ? { webhookUrl: customUrl.trim() } : {}),
       });
       const d = await r.json() as { success?: boolean; webhookUrl?: string; error?: string };
       if (d.success) {
         toast({ title: "Webhook registered!", description: d.webhookUrl });
+        setCustomUrl("");
         fetchInfo();
       } else {
         toast({ title: "Failed", description: d.error, variant: "destructive" });
@@ -2811,27 +2821,47 @@ function WebhookSetupButton() {
   return (
     <div>
       {webhookInfo?.url ? (
-        <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 10 }}>
-          ✅ Active: <span style={{ fontFamily: "monospace", color: "#a5b4fc" }}>{webhookInfo.url}</span>
+        <div style={{ fontSize: 11, color: "#4ade80", marginBottom: 14 }}>
+          ✅ Active: <span style={{ fontFamily: "monospace", color: "#a5b4fc", wordBreak: "break-all" }}>{webhookInfo.url}</span>
           {webhookInfo.pending_update_count !== undefined && (
             <span style={{ color: "#71717a", marginLeft: 8 }}>({webhookInfo.pending_update_count} pending)</span>
           )}
         </div>
       ) : (
-        <div style={{ fontSize: 11, color: "#f87171", marginBottom: 10 }}>❌ Webhook not registered</div>
+        <div style={{ fontSize: 11, color: "#f87171", marginBottom: 14 }}>❌ Webhook not registered</div>
       )}
-      <button
-        onClick={setupWebhook}
-        disabled={loading}
-        style={{
-          background: "linear-gradient(135deg, #818cf8, #6366f1)", color: "#fff",
-          border: "none", padding: "8px 18px", borderRadius: 8,
-          fontSize: 12, fontWeight: 700, cursor: loading ? "wait" : "pointer",
-          opacity: loading ? 0.7 : 1,
-        }}
-      >
-        {loading ? "Registering..." : webhookInfo?.url ? "Re-register Webhook" : "Register Webhook"}
-      </button>
+
+      <label style={{ display: "block", marginBottom: 6 }}>
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>Custom Webhook URL (Optional for ngrok / localhost testing)</span>
+      </label>
+      <div style={{ display: "flex", gap: 10 }}>
+        <input
+          type="text"
+          value={customUrl}
+          onChange={e => setCustomUrl(e.target.value)}
+          placeholder="https://yourapp.ngrok.app/api/bot/webhook"
+          dir="ltr"
+          style={{
+            flex: 1, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
+            borderRadius: 8, padding: "8px 12px", color: "#fff", fontSize: 12, fontFamily: "monospace",
+            outline: "none",
+          }}
+          onFocus={e => (e.currentTarget.style.borderColor = "rgba(129,140,248,0.5)")}
+          onBlur={e => (e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)")}
+        />
+        <button
+          onClick={setupWebhook}
+          disabled={loading}
+          style={{
+            background: "linear-gradient(135deg, #818cf8, #6366f1)", color: "#fff",
+            border: "none", padding: "8px 16px", borderRadius: 8,
+            fontSize: 12, fontWeight: 700, cursor: loading ? "wait" : "pointer",
+            opacity: loading ? 0.7 : 1, whiteSpace: "nowrap"
+          }}
+        >
+          {loading ? "Registering..." : webhookInfo?.url ? "Update Webhook" : "Register"}
+        </button>
+      </div>
     </div>
   );
 }

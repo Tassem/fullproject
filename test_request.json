@@ -1,0 +1,10 @@
+{
+  "model": "llama3.2",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Reply with just OK"
+    }
+  ],
+  "max_tokens": 5
+}

@@ -27,7 +27,7 @@ async function testOpenRouter(apiKey: string, model?: string): Promise<{ ok: boo
         messages: [{ role: "user", content: "Reply with just: OK" }],
         max_tokens: 5,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000),
     });
     const latency = Date.now() - start;
     if (!res.ok) {
@@ -59,7 +59,7 @@ async function testOpenAI(apiKey: string, model?: string): Promise<{ ok: boolean
         messages: [{ role: "user", content: "Reply with just: OK" }],
         max_tokens: 5,
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000),
     });
     const latency = Date.now() - start;
     if (!res.ok) {
@@ -81,23 +81,75 @@ async function testCustomAI(baseUrl: string, apiKey: string, model?: string): Pr
   if (!baseUrl) return { ok: false, message: "Custom Base URL not configured" };
   const start = Date.now();
   try {
-    const url = baseUrl.replace(/\/$/, "") + "/chat/completions";
+    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+    
+    // Check if this is Nanobanana (custom image API)
+    if (cleanBaseUrl.toLowerCase().includes("nanobanana")) {
+      const url = `${cleanBaseUrl}/generate`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "ping" }), // Minimal prompt to verify connection
+        signal: AbortSignal.timeout(15000),
+      });
+      const latency = Date.now() - start;
+      if (res.status === 401) return { ok: false, message: "Invalid API key (401 Unauthorized)", latency };
+      if (res.ok) return { ok: true, message: "Connected ✅ Nanobanana API is ready", latency };
+      const text = await res.text();
+      return { ok: false, message: `HTTP ${res.status}: ${text.slice(0, 50)}`, latency };
+    }
+
+    const url = cleanBaseUrl.includes("/chat/completions") ? cleanBaseUrl : `${cleanBaseUrl}/chat/completions`;
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
     const res = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ model: model || "default-model", messages: [{ role: "user", content: "Reply with just: OK" }] }),
-      signal: AbortSignal.timeout(60000),
+      body: JSON.stringify({ 
+        model: model || "default-model", 
+        messages: [{ role: "user", content: "Reply with just: OK" }],
+        max_tokens: 5,
+        stream: false 
+      }),
+      signal: AbortSignal.timeout(180000),
     });
     const latency = Date.now() - start;
+    const text = await res.text();
+    
     if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as { error?: { message?: string } };
-      return { ok: false, message: err?.error?.message ?? `HTTP ${res.status}`, latency };
+      let msg = `HTTP ${res.status}`;
+      try {
+        const err = JSON.parse(text);
+        msg = err?.error?.message ?? msg;
+      } catch { /* use default msg */ }
+      return { ok: false, message: msg, latency };
     }
-    const data = await res.json() as { choices?: { message?: { content?: string } }[] };
-    const reply = data?.choices?.[0]?.message?.content ?? "";
-    return { ok: true, message: `Connected ✅ model replied: "${reply.trim()}"`, latency };
+
+    let data: any;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      // Handle streaming response artifacts (data: {...})
+      const lines = text.split("\n").filter(l => l.trim().startsWith("data:"));
+      for (const line of lines) {
+        const jsonStr = line.replace(/^data:\s*/, "").trim();
+        if (jsonStr === "[DONE]") continue;
+        try {
+          data = JSON.parse(jsonStr);
+          if (data) break;
+        } catch { /* try next line */ }
+      }
+    }
+
+    if (!data) {
+      return { ok: false, message: `Invalid response format: ${text.slice(0, 100)}`, latency };
+    }
+
+    const reply = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.delta?.content ?? "";
+    const err = data?.error ? (typeof data.error === 'string' ? data.error : data.error.message) : null;
+    if (err) return { ok: false, message: `Error: ${err}`, latency };
+
+    return { ok: true, message: `Connected ✅ model replied: "${reply.trim() || "OK"}"`, latency };
   } catch (err: unknown) {
     return { ok: false, message: err instanceof Error ? err.message : "Connection failed" };
   }

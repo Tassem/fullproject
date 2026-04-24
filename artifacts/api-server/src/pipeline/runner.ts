@@ -13,6 +13,8 @@ import {
   callOpenAIVision,
   generateImageKieAI,
   generateImageOpenAI,
+  generateImageNanobanana,
+  pollNanobananaTask,
   pollKieAITask,
   extractJson,
 } from "./ai.js";
@@ -105,10 +107,18 @@ function resolveAiAnalysisCaller(
   }
 
   if (provider === "openai") {
-    const key = settings.openai_api_key ?? "";
     const model = settings.openai_model_image_analysis ?? "gpt-4o";
     if (!key) throw new Error("OpenAI API key not configured for image analysis");
     return (prompt, img) => callOpenAIVision("https://api.openai.com/v1", key, model, prompt, img);
+  }
+
+  if (provider === "openrouter") {
+    const key = settings.openrouter_api_key_1 ?? settings.openrouter_api_key_2 ?? "";
+    const model = settings.openrouter_model_image_analysis ?? "openai/gpt-4o";
+    if (!key) throw new Error("OpenRouter API key not configured for image analysis");
+    return (prompt, img) => callOpenAIVision("https://openrouter.ai/api/v1", key, model, prompt, img, 0.7, {
+      "HTTP-Referer": "https://ai-blogging-system.replit.app"
+    });
   }
 
   if (provider.startsWith("custom")) {
@@ -243,6 +253,8 @@ export async function processArticle(
   const isArabicSite = globalInstructions.toLowerCase().includes("arabic") || globalInstructions.includes("عربي");
   const isFrenchSite = globalInstructions.toLowerCase().includes("french") || globalInstructions.toLowerCase().includes("français");
 
+  const skipTextStages = article.content_status === "completed" && article.article_status === "published" && article.image_status === "pending";
+
   function getAgent(key: string) {
     const base = agents[key]?.system_message ?? "";
     if (base) {
@@ -335,7 +347,7 @@ export async function processArticle(
   await updateArticle(articleId, { content_status: "analyzing" });
 
   const agentActive = agents["competitor_analysis"]?.is_active !== false;
-  const analysisOk = await runStage("competitor_analysis", articleId, async () => {
+  const analysisOk = skipTextStages ? true : await runStage("competitor_analysis", articleId, async () => {
     if (!agentActive) return "skipped";
     const sysPrompt = getAgent("competitor_analysis");
     const prompt = `Competitor Article URL: ${fresh.rss_link}
@@ -361,7 +373,7 @@ Analyze this competitor article. Return JSON: { "content_gaps": string, "content
   if (!analysisOk) return;
 
   // ── Stage 3: KEYWORD RESEARCH ────────────────────────────────────────────────
-  const kwOk = await runStage("keyword_research", articleId, async () => {
+  const kwOk = skipTextStages ? true : await runStage("keyword_research", articleId, async () => {
     if (!agents["keyword_research"]?.is_active) return "skipped";
     if (!perplexityKey) throw new Error("Perplexity API key not configured");
     const sysPrompt = getAgent("keyword_research");
@@ -456,7 +468,7 @@ Analyze this competitor article. Return JSON: { "content_gaps": string, "content
   // ── Stage 4: TITLE GENERATION ────────────────────────────────────────────────
   await updateArticle(articleId, { content_status: "seo" });
 
-  const titleOk = await runStage("title_gen", articleId, async () => {
+  const titleOk = skipTextStages ? true : await runStage("title_gen", articleId, async () => {
     if (!agents["title_generator"]?.is_active) return "skipped";
     const sysPrompt = getAgent("title_generator");
     const pk = fresh2.primary_keyword ?? "";
@@ -523,7 +535,7 @@ You MUST respond with ONLY valid JSON, no markdown fences, no prose:
   const fresh2b = (await db.select().from(articlesTable).where(eq(articlesTable.id, articleId)))[0] as Article;
 
   // ── Stage 5: DESCRIPTION GENERATION ─────────────────────────────────────────
-  const descOk = await runStage("description_gen", articleId, async () => {
+  const descOk = skipTextStages ? true : await runStage("description_gen", articleId, async () => {
     if (!agents["description_generator"]?.is_active) return "skipped";
     const sysPrompt = getAgent("description_generator");
     const pkForDesc = fresh2b.primary_keyword ?? "";
@@ -558,7 +570,7 @@ You MUST respond with ONLY valid JSON, no markdown fences, no prose:
   if (!descOk) return;
 
   // ── Stage 6: INTERNAL LINKING ─────────────────────────────────────────────────
-  const intOk = await runStage("internal_links", articleId, async () => {
+  const intOk = skipTextStages ? true : await runStage("internal_links", articleId, async () => {
     if (!agents["internal_linking"]?.is_active) return "skipped";
     if (!wpUrl || !wpUser || !wpPass) return "skipped";
     const posts = await wpGetPosts(wpUrl, wpUser, wpPass, 100);
@@ -615,7 +627,7 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
   if (!intOk) return;
 
   // ── Stage 7: EXTERNAL LINKING ─────────────────────────────────────────────────
-  const extOk = await runStage("external_links", articleId, async () => {
+  const extOk = skipTextStages ? true : await runStage("external_links", articleId, async () => {
     if (!agents["external_linking"]?.is_active) return "skipped";
     if (!tavilyKey) return "skipped";
     const query = `${fresh2.primary_keyword ?? fresh2.competitor_title ?? "blog topic"} authoritative sources 2024 2025`;
@@ -677,7 +689,7 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       const sysPrompt = getAgent("image_analysis");
       const prompt = sysPrompt
         ? `${sysPrompt}\n\nArticle Title: ${fresh3.meta_title ?? fresh3.competitor_title ?? ""}\nPrimary Keyword: ${fresh3.primary_keyword ?? ""}`
-        : `Generate a detailed image creation prompt in English (strictly no other languages) for an article titled "${fresh3.meta_title ?? fresh3.competitor_title ?? ""}". Ensure the prompt describes a high-quality, professional image. Return ONLY JSON: { "image_prompt": string }`;
+        : `Generate a detailed image creation prompt in English (strictly no other languages) for an article titled "${fresh3.meta_title ?? fresh3.competitor_title ?? ""}". Ensure the prompt describes a high-quality, professional image. AVOID any sensitive, controversial, or illegal topics (no drugs, no violence, no adult content) to ensure the prompt passes AI safety filters. Return ONLY JSON: { "image_prompt": string }`;
       
       let result = "";
       let providerName = settings.ai_provider_image_analysis ?? "Gemini";
@@ -685,6 +697,7 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       try {
         const analyzer = resolveAiAnalysisCaller(settings);
         result = await analyzer(prompt, imgUrl ?? undefined);
+        console.log(`[image_analysis] article=${articleId} raw result: "${result.slice(0, 500)}..."`);
       } catch (err) {
         console.log(`[image_analysis] Primary analyzer failed (${String(err).slice(0, 100)}). Falling back to Sub AI (content only).`);
         result = await callSub(sysPrompt || "You are an expert AI image prompt generator.", prompt);
@@ -706,7 +719,19 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       }
 
       // Cleanup final prompt from JSON artifacts, markers, or prefixes
-      if (imagePrompt) {
+      if (imagePrompt && typeof imagePrompt === "object") {
+        const flatten = (obj: any): string => {
+          return Object.entries(obj)
+            .map(([key, val]) => {
+              if (typeof val === "object" && val !== null) return flatten(val);
+              return `${key}: ${val}`;
+            })
+            .join(". ");
+        };
+        imagePrompt = flatten(imagePrompt);
+      }
+      
+      if (imagePrompt && typeof imagePrompt === "string") {
         imagePrompt = imagePrompt
           .replace(/^[\s\\]+/, "") // remove leading whitespace, backslashes
           .replace(/^["'|]+|["'|]+$/g, "") // remove surrounding quotes/pipes/wrappers
@@ -761,6 +786,29 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       await updateArticle(articleId, { generated_image_url: url, image_status: "generated" });
       const dur = Date.now() - imgGenStart;
       await logStage(articleId, "image_generation", "success", `kie.ai completed in ${dur}ms`, dur);
+
+    } else if (imgGenProvider === "nanobanana") {
+      // Custom Nanobanana provider
+      const slot = settings.image_gen_custom_slot || "1"; // Values from UI: "", "2", "3"
+      const slotNum = slot === "" ? "1" : slot;
+      const prefix = slotNum === "1" ? "custom_ai" : `custom_ai_${slotNum}`;
+      
+      const baseUrl = settings[`${prefix}_base_url`] ?? "";
+      const apiKey = settings[`${prefix}_key`] ?? "";
+      
+      if (!baseUrl) throw new Error("Nanobanana: Base URL not configured in selected Custom AI slot");
+      
+      const scrubbedPrompt = (imagePrompt ?? "")
+        .replace(/\b(?:drug|smuggle|illegal|cocaine|heroin|cannabis|marijuana|violence|killing|death|blood)\b/gi, "safety-sanitized-scene")
+        .replace(/[^\x00-\x7F]/g, "") // Remove non-ASCII characters (Arabic, etc.)
+        .trim();
+      const { jobId } = await generateImageNanobanana(baseUrl, apiKey, scrubbedPrompt);
+      await updateArticle(articleId, { image_status: "generating" });
+      const url = await pollNanobananaTask(baseUrl, apiKey, jobId);
+      generatedImageUrl = url;
+      await updateArticle(articleId, { generated_image_url: url, image_status: "generated" });
+      const dur = Date.now() - imgGenStart;
+      await logStage(articleId, "image_generation", "success", `Nanobanana completed in ${dur}ms`, dur);
 
     } else {
       // Custom / OpenAI-compatible image generation (DALL-E style)
@@ -856,7 +904,7 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
 
   const topic = fresh4.meta_title ?? fresh4.competitor_title ?? fresh4.rss_link ?? "this topic";
   const primaryKw = fresh4.primary_keyword ?? topic.split(/\s+/).slice(0, 4).join(" ");
-  const articleOk = await runStage("article_write", articleId, async () => {
+  const articleOk = skipTextStages ? true : await runStage("article_write", articleId, async () => {
     if (!agents["article_writer"]?.is_active) return "skipped";
     const sysPrompt = getAgent("article_writer");
     const prompt = `Write a complete, detailed, SEO-optimized blog article in HTML format about the following topic.
@@ -1003,65 +1051,8 @@ ${cleaned}`;
   if (!articleOk) return;
 
   // ── Stage 12: WORDPRESS PUBLISH ───────────────────────────────────────────────
-  await updateArticle(articleId, { content_status: "publishing" });
   let fresh5 = (await db.select().from(articlesTable).where(eq(articlesTable.id, articleId)))[0] as Article;
-
-  // Pre-publish: inject internal links if none exist yet
-  if (wpUrl && wpUser && wpPass && fresh5.article_html) {
-    const hasInternalLinks = (fresh5.internal_links as { url: string }[] | null)?.length ?? 0;
-    const htmlHasInternalLink = fresh5.article_html.includes(wpUrl.replace(/^https?:\/\//, "").replace(/\/$/, ""));
-    if (hasInternalLinks === 0 || !htmlHasInternalLink) {
-      try {
-        const wpPosts = await wpGetPosts(wpUrl, wpUser, wpPass, 20);
-        const usable = wpPosts.filter(p => p.link && p.title?.rendered);
-        if (usable.length > 0) {
-          const linksToInject = usable.slice(0, 3).map(p => ({
-            text: cleanWpTitle(p.title.rendered),
-            url: p.link,
-          }));
-          console.log(`[pre_publish] article=${articleId} injecting ${linksToInject.length} internal links into HTML`);
-          await updateArticle(articleId, { internal_links: linksToInject as never });
-
-          let html = fresh5.article_html;
-          const paragraphs = html.match(/<\/p>/g) || [];
-          if (paragraphs.length > 2) {
-            let injected = 0;
-            for (const link of linksToInject) {
-              if (html.includes(link.url)) continue;
-              const targetIdx = Math.min(3 + injected * 3, paragraphs.length - 1);
-              let pCount = 0;
-              let insertPos = 0;
-              for (let i = 0; i < html.length; i++) {
-                if (html.slice(i, i + 4) === "</p>") {
-                  pCount++;
-                  if (pCount === targetIdx) {
-                    insertPos = i + 4;
-                    break;
-                  }
-                }
-              }
-              if (insertPos > 0) {
-                const linkHtml = `\n<p>You might also find useful insights in our article on <a href="${link.url}">${link.text}</a>.</p>`;
-                html = html.slice(0, insertPos) + linkHtml + html.slice(insertPos);
-                injected++;
-              }
-            }
-            if (injected > 0) {
-              console.log(`[pre_publish] article=${articleId} embedded ${injected} internal links in article body`);
-              await updateArticle(articleId, { article_html: html });
-              fresh5 = (await db.select().from(articlesTable).where(eq(articlesTable.id, articleId)))[0] as Article;
-            }
-          }
-        } else {
-          console.log(`[pre_publish] article=${articleId} still no WP posts found for internal linking`);
-        }
-      } catch (err) {
-        console.log(`[pre_publish] article=${articleId} internal link injection failed:`, err);
-      }
-    }
-  }
-
-  const publishOk = await runStage("wp_publish", articleId, async () => {
+  const publishOk = skipTextStages ? true : await runStage("wp_publish", articleId, async () => {
     if (!wpUrl || !wpUser || !wpPass) throw new Error("WordPress credentials not configured");
     if (!fresh5.article_html) throw new Error("No article HTML to publish");
 
@@ -1106,8 +1097,7 @@ ${cleaned}`;
 
   // ── Stage 13: RANK MATH SEO ───────────────────────────────────────────────────
   const fresh6 = (await db.select().from(articlesTable).where(eq(articlesTable.id, articleId)))[0] as Article;
-
-  await runStage("rank_math", articleId, async () => {
+  const rankMathOk = skipTextStages ? true : await runStage("rank_math", articleId, async () => {
     if (!fresh6.wp_post_id || !wpUrl || !wpUser || !wpPass) return "skipped";
 
     // Produces a clean 2-3 word Rank Math focus keyword

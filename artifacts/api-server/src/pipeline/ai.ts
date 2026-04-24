@@ -20,7 +20,8 @@ export async function callOpenAICompat(
   if (systemPrompt) messages.push({ role: "system", content: systemPrompt });
   messages.push({ role: "user", content: userMessage });
 
-  const url = baseUrl.replace(/\/$/, "") + "/chat/completions";
+  const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+  const url = cleanBaseUrl.includes("/chat/completions") ? cleanBaseUrl : `${cleanBaseUrl}/chat/completions`;
 
   const res = await fetch(url, {
     method: "POST",
@@ -29,18 +30,24 @@ export async function callOpenAICompat(
       "Content-Type": "application/json",
       ...(extraHeaders ?? {}),
     },
-    body: JSON.stringify({ model, messages, temperature }),
-    signal: AbortSignal.timeout(120000),
+    body: JSON.stringify({ model, messages, temperature, stream: false }),
+    signal: AbortSignal.timeout(300000),
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as OpenAICompatResponse;
-    throw new Error(err?.error?.message ?? `AI provider HTTP ${res.status} (${url})`);
+    let msg = `AI provider HTTP ${res.status} (${url})`;
+    try {
+      const err = JSON.parse(text) as OpenAICompatResponse;
+      msg = err?.error?.message ?? msg;
+    } catch { /* use default msg */ }
+    throw new Error(msg);
   }
 
-  const data = (await res.json()) as OpenAICompatResponse;
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("AI provider returned empty response");
+  const data = extractJson<OpenAICompatResponse>(text);
+  const content = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.delta?.content;
+  if (!content && !data.error) throw new Error("AI provider returned empty response");
+  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : (data.error.message ?? "Unknown AI error"));
   return content.trim();
 }
 
@@ -51,9 +58,11 @@ export async function callOpenAIVision(
   model: string,
   prompt: string,
   imageUrl?: string,
-  temperature = 0.7
+  temperature = 0.7,
+  extraHeaders?: Record<string, string>
 ): Promise<string> {
-  const url = baseUrl.replace(/\/$/, "") + "/chat/completions";
+  const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+  const url = cleanBaseUrl.includes("/chat/completions") ? cleanBaseUrl : `${cleanBaseUrl}/chat/completions`;
 
   const content: any[] = [{ type: "text", text: prompt }];
   if (imageUrl) {
@@ -65,23 +74,31 @@ export async function callOpenAIVision(
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      ...(extraHeaders ?? {}),
     },
     body: JSON.stringify({
       model,
       messages: [{ role: "user", content }],
       temperature,
+      stream: false
     }),
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(300000),
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as OpenAICompatResponse;
-    throw new Error(err?.error?.message ?? `Vision provider HTTP ${res.status} (${url})`);
+    let msg = `Vision provider HTTP ${res.status} (${url})`;
+    try {
+      const err = JSON.parse(text) as OpenAICompatResponse;
+      msg = err?.error?.message ?? msg;
+    } catch { /* use default msg */ }
+    throw new Error(msg);
   }
 
-  const data = (await res.json()) as OpenAICompatResponse;
-  const responseText = data?.choices?.[0]?.message?.content;
-  if (!responseText) throw new Error("Vision provider returned empty response");
+  const data = extractJson<OpenAICompatResponse>(text);
+  const responseText = data?.choices?.[0]?.message?.content ?? data?.choices?.[0]?.delta?.content;
+  if (!responseText && !data.error) throw new Error("Vision provider returned empty response");
+  if (data.error) throw new Error(typeof data.error === 'string' ? data.error : (data.error.message ?? "Unknown Vision error"));
   return responseText.trim();
 }
 
@@ -141,8 +158,9 @@ export async function callPerplexity(
     body: JSON.stringify({
       model: "sonar",
       messages: [{ role: "user", content: query }],
+      stream: false
     }),
-    signal: AbortSignal.timeout(60000),
+    signal: AbortSignal.timeout(90000),
   });
 
   if (!res.ok) {
@@ -226,8 +244,8 @@ export async function callGemini(
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contents: [{ parts }] }),
-        signal: AbortSignal.timeout(60000),
+        body: JSON.stringify({ contents: [{ parts }], generationConfig: { maxOutputTokens: 5 } }),
+        signal: AbortSignal.timeout(90000),
       }
     );
 
@@ -269,7 +287,8 @@ export async function generateImageOpenAI(
   
   // OpenRouter image models often use /chat/completions instead of /images/generations
   if (isOpenRouter) {
-    const url = baseUrl.replace(/\/$/, "") + "/chat/completions";
+    const cleanBaseUrl = baseUrl.replace(/\/$/, "");
+    const url = cleanBaseUrl.includes("/chat/completions") ? cleanBaseUrl : `${cleanBaseUrl}/chat/completions`;
     const res = await fetch(url, {
       method: "POST",
       headers: {
@@ -470,6 +489,20 @@ export async function pollKieAITask(
 export function extractJson<T>(text: string): T {
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   const raw = fenceMatch ? fenceMatch[1].trim() : text.trim();
+
+  // Special handling for streaming artifacts (SSE)
+  if (raw.includes("data:")) {
+    const lines = raw.split("\n").filter(l => l.trim().startsWith("data:"));
+    for (const line of lines) {
+      const jsonStr = line.replace(/^data:\s*/, "").trim();
+      if (jsonStr === "[DONE]") continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        if (parsed) return parsed as T;
+      } catch { /* try next */ }
+    }
+  }
+
   const start = raw.search(/[{[]/);
   const end = Math.max(raw.lastIndexOf("}"), raw.lastIndexOf("]"));
   if (start === -1 || end === -1) throw new Error("No JSON found in AI response");
@@ -483,12 +516,90 @@ export function extractJson<T>(text: string): T {
     try {
       const fixed = jsonStr
         .replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":') // Quote unquoted keys
-        .replace(/:\s*'([^']*)'/g, ': "$1"') // Replace single quoted values with double quotes
-        .replace(/,\s*([}\]])/g, '$1'); // Remove trailing commas
+        .replace(/:\s*'([^']*)'/g, ': "$1"') // Replace single quoted values
+        .replace(/,\s*([}\]])/g, '$1') // Remove trailing commas
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, " "); // Remove control characters
       return JSON.parse(fixed) as T;
-    } catch {
-       // If still failing, throw the original error or a more descriptive one
+    } catch (err2) {
+       // Final attempt: if it's a simple string wrapped in something that looks like JSON
+       const stringMatch = jsonStr.match(/"(?:image[-_]?prompt|prompt)"\s*:\s*"([\s\S]*)"\s*\}?/i);
+       if (stringMatch) return { image_prompt: stringMatch[1].trim() } as any;
+       
        throw new Error(`Invalid JSON format: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
+}
+
+// ── Nanobanana Image Generation (Custom Provider) ───────────────────────────
+export async function generateImageNanobanana(
+  baseUrl: string,
+  apiKey: string,
+  prompt: string,
+  width = 1024,
+  height = 1024
+): Promise<{ jobId: string }> {
+  const url = baseUrl.replace(/\/$/, "") + "/generate";
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompt,
+      width,
+      height,
+      count: 1
+    }),
+    signal: AbortSignal.timeout(30000),
+  });
+
+  const data = (await res.json().catch(() => ({}))) as { jobId?: string; error?: string };
+  if (!res.ok) throw new Error(data?.error ?? `Nanobanana generate failed (HTTP ${res.status})`);
+
+  if (!data?.jobId) throw new Error("Nanobanana did not return a job ID");
+  return { jobId: data.jobId };
+}
+
+export async function pollNanobananaTask(
+  baseUrl: string,
+  apiKey: string,
+  jobId: string,
+  maxWaitMs = 180000
+): Promise<string> {
+  const deadline = Date.now() + maxWaitMs;
+  const pollUrl = baseUrl.replace(/\/$/, "") + `/jobs/${jobId}`;
+  
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5000));
+
+    const res = await fetch(pollUrl, {
+      method: "GET",
+      headers: { 
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as { status: string; images: string[]; error?: string };
+    const state = (data?.status || "").toLowerCase();
+    
+    if (state === "done" || state === "success" || state === "completed") {
+      if (data.images && data.images.length > 0) {
+        // The provider returns relative paths like /api/nanobanana/results/xxx.png
+        // We need to convert it to a full URL
+        const imgPath = data.images[0];
+        const providerBase = baseUrl.split("/api/")[0];
+        return providerBase + imgPath;
+      }
+      throw new Error("Nanobanana job completed but no images found");
+    }
+
+    if (state === "failed" || state === "error") {
+      throw new Error(data.error ?? "Nanobanana job failed");
+    }
+  }
+
+  throw new Error(`Nanobanana polling timed out after ${maxWaitMs/1000}s`);
 }

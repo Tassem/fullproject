@@ -24,6 +24,7 @@ import paymentsUserRouter from "./payments_user";
 import publicRouter from "./public";
 import rssRouter from "./rss";
 import blogSettingsRouter from "./blog-settings";
+import nanobananaRouter from "./nanobanana/index";
 
 const router: IRouter = Router();
 
@@ -54,5 +55,6 @@ router.use("/public", publicRouter);
 router.use("/rss", rssRouter);
 router.use("/rss-feeds", rssRouter);
 router.use("/blog-settings", blogSettingsRouter);
+router.use("/nanobanana", nanobananaRouter);
 
 export default router;

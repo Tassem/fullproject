@@ -95,6 +95,7 @@ export async function runPipeline(): Promise<{ queued: number; message: string }
             const [inserted] = await db
               .insert(articlesTable)
               .values({
+                user_id: site.user_id,
                 site_id: site.id,
                 rss_feed_id: feed.id ?? null,
                 wp_category_id: feed.wp_category_id ?? null,
@@ -129,7 +130,7 @@ export async function runPipeline(): Promise<{ queued: number; message: string }
     .select({ id: articlesTable.id, site_id: articlesTable.site_id })
     .from(articlesTable)
     .where(
-      sql`${articlesTable.content_status} IN ('pending', 'failed') AND ${articlesTable.article_status} = 'pending'`
+      sql`${articlesTable.content_status} IN ('pending', 'failed') OR ${articlesTable.image_status} = 'pending' OR ${articlesTable.article_status} = 'pending'`
     )
     .limit(20);
 

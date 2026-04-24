@@ -170,6 +170,26 @@ function ArticleDetailsPanel({ article, onClose }: { article: ArticleDetail; onC
                   {reRankMathLoading ? "Updating..." : "Re-apply Rank Math"}
                 </button>
               )}
+              <button
+                onClick={async () => {
+                  try {
+                    const r = await fetch(`/api/articles/${article.id}/regenerate-image`, { method: "POST", headers: { "Authorization": `Bearer ${localStorage.getItem("pro_token")}` } });
+                    if (r.ok) {
+                      toast({ title: "Image Regeneration Started", description: "The image is being regenerated in the background." });
+                      onClose();
+                    } else {
+                      toast({ title: "Failed", variant: "destructive" });
+                    }
+                  } catch {
+                    toast({ title: "Error", variant: "destructive" });
+                  }
+                }}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md border border-cyan-500/40 text-cyan-400 hover:bg-cyan-500/10 transition-colors"
+                title="Regenerate only the image for this article"
+              >
+                <ImageIcon className="w-3 h-3" />
+                Regenerate Image
+              </button>
             </div>
           </div>
 
@@ -703,12 +723,31 @@ export function Articles() {
                         )}
                         <button
                           data-testid={`button-retry-${article.id}`}
-                          onClick={() => retryMutation.mutate({ id: article.id })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            retryMutation.mutate({ id: article.id });
+                          }}
                           disabled={retryMutation.isPending}
                           className={`p-1.5 transition-colors ${article.article_status === "failed" || article.content_status === "failed" ? "text-amber-400 hover:text-amber-300" : "text-muted-foreground hover:text-foreground"}`}
                           title="Retry"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const r = await fetch(`/api/articles/${article.id}/regenerate-image`, { method: "POST", headers: { "Authorization": `Bearer ${localStorage.getItem("pro_token")}` } });
+                              if (r.ok) {
+                                toast({ title: "Regenerating Image", description: "Pipeline triggered." });
+                                qc.invalidateQueries({ queryKey: getListArticlesQueryKey({}) });
+                              }
+                            } catch {}
+                          }}
+                          className="p-1.5 text-cyan-400 hover:text-cyan-300 transition-colors"
+                          title="Regenerate Image Only"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5" />
                         </button>
                         <button
                           data-testid={`button-delete-${article.id}`}

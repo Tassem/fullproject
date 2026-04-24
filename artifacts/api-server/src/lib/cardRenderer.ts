@@ -12,6 +12,7 @@
 
 import { createCanvas, loadImage, GlobalFonts } from "@napi-rs/canvas";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,15 +25,28 @@ function ensureFonts() {
   const fontsDir = path.join(__dirname, "fonts");
   const register = (file: string, family: string) => {
     try {
-      GlobalFonts.registerFromPath(path.join(fontsDir, file), family);
-    } catch { /* skip missing font */ }
+      const p = path.join(fontsDir, file);
+      if (fs.existsSync(p)) {
+        GlobalFonts.registerFromPath(p, family);
+        console.log(`[FONTS] Registered ${file} as ${family}`);
+      } else {
+        console.warn(`[FONTS] Font file NOT FOUND: ${p}`);
+      }
+    } catch (e) {
+      console.error(`[FONTS] Failed to register ${file}:`, e);
+    }
   };
   // Cairo (main Arabic/Latin font)
   register("Cairo.ttf", "Cairo");
   // Noto Kufi Arabic (used in custom templates)
   register("NotoKufiArabic-Regular.ttf", "Noto Kufi Arabic");
   register("NotoKufiArabic-Bold.ttf",    "Noto Kufi Arabic");
-  // Inter (used in some template text elements)
+  register("NotoKufiArabic-Regular.ttf", "KufiArabic");
+  register("NotoKufiArabic-Bold.ttf",    "KufiArabic");
+  // Noto Sans Arabic (clean modern alternative)
+  register("NotoSansArabic-Regular.ttf", "Noto Sans Arabic");
+  register("NotoSansArabic-Bold.ttf",    "Noto Sans Arabic");
+  // Inter (used in some template text elements and as fallback for punctuation)
   register("Inter-Regular.ttf", "Inter");
   register("Inter-Bold.ttf",    "Inter");
 }
@@ -330,7 +344,8 @@ export async function renderFromCanvasLayout(
         const family = el.fontFamily || "Cairo";
         const weight = el.fontWeight || 700;
         const fsize = Math.round((el.fontSize || 16) * scale);
-        ctx.font = `${weight} ${fsize}px "${family}", "Cairo", sans-serif`;
+        // Put Inter first to handle punctuation/signs, then the requested font for Arabic
+        ctx.font = `${weight} ${fsize}px "Inter", "${family}", "Cairo", sans-serif`;
         ctx.fillStyle = el.color || "#ffffff";
         ctx.textBaseline = "top";
 
@@ -341,6 +356,8 @@ export async function renderFromCanvasLayout(
         ctx.direction = isRTL ? "rtl" : "ltr";
 
         const lineH = fsize * (el.lineHeight || 1.45);
+        // Fallback chain for text: Inter (symbols) -> requested family -> KufiArabic -> Cairo -> sans-serif
+        ctx.font = `${weight} ${fsize}px "Inter", "${family}", "KufiArabic", "Noto Sans Arabic", "Cairo", sans-serif`;
         const lines = wrapText(ctx, rawContent, ew);
 
         // Total text height for vertical centering within the element box
@@ -625,7 +642,7 @@ export async function renderCard(opts: RenderCardOptions): Promise<Buffer> {
   const maxTextW = W - 2 * padH;
 
   // Calculate headline lines
-  ctx.font = `${fontWeight} ${headlineFontSz}px "${font}", sans-serif`;
+  ctx.font = `${fontWeight} ${headlineFontSz}px "Inter", "${font}", sans-serif`;
   const headlineLines = wrapText(ctx, title, maxTextW).slice(0, 4);
   const lineH = headlineFontSz * 1.45;
 
@@ -662,7 +679,7 @@ export async function renderCard(opts: RenderCardOptions): Promise<Buffer> {
     ctx.shadowBlur  = 0;
 
     const labelY = Math.round(contentAreaY + headlineLines.length * lineH + labelGap);
-    ctx.font = `600 ${labelFontSz}px "${font}", sans-serif`;
+    ctx.font = `600 ${labelFontSz}px "${font}", "Inter", sans-serif`;
 
     const labelText = label!;
     const labelTextW = ctx.measureText(labelText).width;

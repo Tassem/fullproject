@@ -47,36 +47,33 @@ services:
       PORT: 8080
       DATABASE_URL: postgres://${PGUSER:-mediaflow}:${PGPASSWORD:-mediaflow_secret}@db:5432/${PGDATABASE:-mediaflow}
       SESSION_SECRET: ${SESSION_SECRET:-change_this_secret_in_production}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"
+      - "8086:8080"
+    volumes:
+      - uploads_data:/app/artifacts/api-server/uploads
     networks:
       - mediaflow
 
   platform:
-    image: nginx:alpine
-    restart: unless-stopped
-    depends_on:
-      - api
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - platform_dist:/usr/share/nginx/html:ro
-    ports:
-      - "80:80"
-    networks:
-      - mediaflow
-
-  platform-builder:
     build:
       context: .
       dockerfile: Dockerfile.platform
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
     volumes:
-      - platform_dist:/output
-    environment:
-      VITE_API_BASE_URL: ""
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "8085:80"
+    networks:
+      - mediaflow
 
 volumes:
   db_data:
-  platform_dist:
+  uploads_data:
 
 networks:
   mediaflow:
