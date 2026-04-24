@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { sitesTable, articlesTable, agentPromptsTable, usersTable, rssFeedsTable } from "@workspace/db";
 import { eq, and, count, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { assertSiteLimit, assertFeature, rejectGuard } from "../lib/planGuard";
 
 function feedToSnake(f: typeof rssFeedsTable.$inferSelect) {
   return {
@@ -359,6 +360,13 @@ router.post("/", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const { name, wp_url, wp_username, wp_password, rss_feed_url, is_active = true } = req.body;
   if (!name) return res.status(400).json({ error: "Name is required" });
+
+  // ── Plan enforcement: has_blog_automation + max_sites ────────────────────
+  const blogGuard = await assertFeature(user.id, "has_blog_automation");
+  if (!blogGuard.ok) return rejectGuard(res, blogGuard);
+
+  const siteGuard = await assertSiteLimit(user.id);
+  if (!siteGuard.ok) return rejectGuard(res, siteGuard);
 
   const [site] = await db.insert(sitesTable).values({
     user_id: user.id,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, X, Zap, Building2, User, Star, AlertCircle, Newspaper, Rss } from "lucide-react";
+import { Check, X, Zap, Building2, User, Star, AlertCircle, Newspaper, Rss, RefreshCw } from "lucide-react";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,41 +10,45 @@ interface Plan {
   id: number;
   slug: string;
   name: string;
-  priceMonthly: number;
-  priceYearly: number;
-  cardsPerDay: number;
-  maxTemplates: number;
-  maxSavedDesigns: number;
-  maxSites: number;
-  articlesPerMonth: number;
-  hasBlogAutomation: boolean;
-  hasImageGenerator: boolean;
-  apiAccess: boolean;
-  telegramBot: boolean;
-  overlayUpload: boolean;
-  customWatermark: boolean;
-  credits: number;
-  sortOrder: number;
+  description: string | null;
+  price_monthly: number;
+  price_yearly: number;
+  monthly_credits: number;
+  max_templates: number;
+  max_saved_designs: number;
+  max_sites: number;
+  has_blog_automation: boolean;
+  has_image_generator: boolean;
+  has_api_access: boolean;
+  has_telegram_bot: boolean;
+  has_overlay_upload: boolean;
+  has_custom_watermark: boolean;
+  has_priority_processing: boolean;
+  has_priority_support: boolean;
+  rate_limit_daily: number;
+  rate_limit_hourly: number;
+  sort_order: number;
+  is_active: boolean;
+  is_free: boolean;
 }
 
 interface Usage {
-  cardsToday: number;
-  cardsLimit: number;
-  articlesThisMonth: number;
-  articlesLimit: number;
-  sitesUsed: number;
+  monthly_credits: number;
+  purchased_credits: number;
+  total_credits: number;
+  credits_reset_date: string | null;
+  daily_usage: number;
+  daily_limit: number;
   sitesLimit: number;
-  templates: number;
   templatesLimit: number;
-  savedDesigns: number;
   savedDesignsLimit: number;
-  apiAccess: boolean;
-  telegramBot: boolean;
-  overlayUpload: boolean;
-  customWatermark: boolean;
-  hasBlogAutomation: boolean;
-  hasImageGenerator: boolean;
-  creditsBalance: number;
+  has_api_access: boolean;
+  has_telegram_bot: boolean;
+  has_overlay_upload: boolean;
+  has_custom_watermark: boolean;
+  has_blog_automation: boolean;
+  has_image_generator: boolean;
+  monthly_allocation: number;
 }
 
 interface SubscriptionData {
@@ -57,25 +61,26 @@ const PLAN_ICONS: Record<string, React.FC<{ className?: string }>> = {
   free: User,
   starter: Zap,
   pro: Star,
-  agency: Building2,
+  business: Building2,
 };
 
 const PLAN_ACCENT: Record<string, { bar: string; icon: string; badge: string; ring: string }> = {
-  free:    { bar: "bg-slate-500",   icon: "bg-slate-500/15 text-slate-300",   badge: "bg-slate-500/15 text-slate-300",   ring: "ring-slate-500" },
-  starter: { bar: "bg-blue-500",    icon: "bg-blue-500/15 text-blue-400",     badge: "bg-blue-500/15 text-blue-400",     ring: "ring-blue-400" },
-  pro:     { bar: "bg-violet-600",  icon: "bg-violet-500/15 text-violet-400", badge: "bg-violet-500/15 text-violet-400", ring: "ring-violet-500" },
-  agency:  { bar: "bg-amber-500",   icon: "bg-amber-500/15 text-amber-400",   badge: "bg-amber-500/15 text-amber-400",   ring: "ring-amber-400" },
+  free:     { bar: "bg-slate-500",   icon: "bg-slate-500/15 text-slate-300",   badge: "bg-slate-500/15 text-slate-300",   ring: "ring-slate-500" },
+  starter:  { bar: "bg-blue-500",    icon: "bg-blue-500/15 text-blue-400",     badge: "bg-blue-500/15 text-blue-400",     ring: "ring-blue-400" },
+  pro:      { bar: "bg-violet-600",  icon: "bg-violet-500/15 text-violet-400", badge: "bg-violet-500/15 text-violet-400", ring: "ring-violet-500" },
+  business: { bar: "bg-amber-500",   icon: "bg-amber-500/15 text-amber-400",   badge: "bg-amber-500/15 text-amber-400",   ring: "ring-amber-400" },
 };
 
-function displayNum(n: number) {
-  if (n === -1) return "Unlimited";
-  if (n === 0) return "—";
-  return n.toLocaleString();
+function displayNum(n: number, suffix = "") {
+  if (n <= 0) return "—";
+  if (n >= 999) return "∞";
+  return n.toLocaleString() + suffix;
 }
 
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
-  if (limit === 0) return null;
-  if (limit === -1) {
+  if (limit <= 0) return null;
+  const unlimited = limit >= 999;
+  if (unlimited) {
     return (
       <div className="space-y-1">
         <div className="flex justify-between text-sm">
@@ -144,6 +149,14 @@ export default function Subscription() {
   const activePlan = plans.find(p => p.slug === currentPlan);
   const accent = PLAN_ACCENT[currentPlan] ?? PLAN_ACCENT.free;
 
+  const creditsUsed = usage.monthly_allocation > 0
+    ? usage.monthly_allocation - usage.monthly_credits
+    : 0;
+
+  const resetDate = usage.credits_reset_date
+    ? new Date(usage.credits_reset_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir="ltr">
       <div>
@@ -157,7 +170,10 @@ export default function Subscription() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <h2 className="text-lg font-semibold">Current Usage</h2>
-              <p className="text-sm text-muted-foreground">Card counter resets daily · Articles reset monthly</p>
+              <p className="text-sm text-muted-foreground">
+                Daily limit resets at midnight
+                {resetDate && <> · Monthly credits reset {resetDate}</>}
+              </p>
             </div>
             <Badge className={cn("text-xs px-3 py-1", accent.badge)}>
               {activePlan?.name ?? currentPlan}
@@ -165,40 +181,51 @@ export default function Subscription() {
           </div>
         </CardHeader>
 
-        {/* Image Generator meters */}
+        {/* Credits & Daily usage */}
         <CardContent className="pb-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-            <Newspaper className="h-3.5 w-3.5" /> News Image Generator
+            <Zap className="h-3.5 w-3.5" /> Credits
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
-            <UsageMeter label="Cards today" used={usage.cardsToday} limit={usage.cardsLimit} />
-            <UsageMeter label="Templates" used={usage.templates} limit={usage.templatesLimit} />
-            <UsageMeter label="Saved designs" used={usage.savedDesigns} limit={usage.savedDesignsLimit} />
+            <UsageMeter
+              label="Monthly credits used"
+              used={creditsUsed}
+              limit={usage.monthly_allocation}
+            />
+            <UsageMeter
+              label="Daily operations"
+              used={usage.daily_usage}
+              limit={usage.daily_limit}
+            />
+            <div className="space-y-1">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Purchased credits</span>
+                <span className="font-medium text-violet-500">{usage.purchased_credits}</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <RefreshCw className="h-3 w-3" /> Never expires
+              </div>
+            </div>
           </div>
         </CardContent>
 
-        {/* Blog Automation meters */}
-        <CardContent className="pb-4 border-t pt-4">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
-            <Rss className="h-3.5 w-3.5" /> Blog Automation
-          </p>
-          {usage.hasBlogAutomation ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <UsageMeter label="Articles this month" used={usage.articlesThisMonth} limit={usage.articlesLimit} />
-              <UsageMeter label="Managed sites" used={usage.sitesUsed} limit={usage.sitesLimit} />
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">Blog Automation is not enabled on your current plan. Upgrade to access it.</p>
-          )}
-        </CardContent>
+        {/* Blog Automation */}
+        {usage.has_blog_automation && (
+          <CardContent className="pb-4 border-t pt-4">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+              <Rss className="h-3.5 w-3.5" /> Blog Automation
+            </p>
+            <UsageMeter label="Managed sites" used={0} limit={usage.sitesLimit} />
+          </CardContent>
+        )}
 
         {/* Feature flags */}
         <CardContent className="pt-0 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "API Access",        active: usage.apiAccess },
-            { label: "Telegram Bot",      active: usage.telegramBot },
-            { label: "Overlay Upload",    active: usage.overlayUpload },
-            { label: "Custom Watermark",  active: usage.customWatermark },
+            { label: "API Access",       active: usage.has_api_access },
+            { label: "Telegram Bot",     active: usage.has_telegram_bot },
+            { label: "Overlay Upload",   active: usage.has_overlay_upload },
+            { label: "Custom Watermark", active: usage.has_custom_watermark },
           ].map(f => (
             <div key={f.label} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm",
               f.active ? "border-green-200 bg-green-50 text-green-700" : "border-dashed bg-muted/30 text-muted-foreground")}>
@@ -224,19 +251,19 @@ export default function Subscription() {
               className={cn("px-3 py-1 rounded-md transition-colors",
                 billing === "yearly" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground")}
               onClick={() => setBilling("yearly")}>
-              Yearly <span className="ml-1 text-xs text-green-600 font-medium">Save 20%</span>
+              Yearly <span className="ml-1 text-xs text-green-600 font-medium">Save ~20%</span>
             </button>
           </div>
         </div>
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {[...plans].sort((a, b) => a.sortOrder - b.sortOrder).map(plan => {
+          {[...plans].sort((a, b) => a.sort_order - b.sort_order).map(plan => {
             const isActive = plan.slug === currentPlan;
             const Icon = PLAN_ICONS[plan.slug] ?? User;
             const ac = PLAN_ACCENT[plan.slug] ?? PLAN_ACCENT.free;
-            const price = billing === "yearly" && plan.priceYearly > 0
-              ? Math.round(plan.priceYearly / 12)
-              : plan.priceMonthly;
+            const price = billing === "yearly" && plan.price_yearly > 0
+              ? Math.round(plan.price_yearly / 12)
+              : plan.price_monthly;
 
             return (
               <Card key={plan.id} className={cn("flex flex-col relative transition-all",
@@ -253,33 +280,46 @@ export default function Subscription() {
                     <Icon className="h-5 w-5" />
                   </div>
                   <CardTitle className="text-lg">{plan.name}</CardTitle>
+                  {plan.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{plan.description}</p>
+                  )}
                   <div className="mt-1">
-                    {plan.priceMonthly === 0 ? (
+                    {plan.price_monthly === 0 ? (
                       <span className="text-2xl font-bold">Free</span>
                     ) : (
                       <div className="flex items-baseline gap-1">
-                        <span className="text-2xl font-bold">{price.toLocaleString()}</span>
+                        <span className="text-2xl font-bold">${price}</span>
                         <span className="text-sm text-muted-foreground">/mo</span>
                       </div>
                     )}
-                    {billing === "yearly" && plan.priceYearly > 0 && (
-                      <p className="text-xs text-green-600 mt-0.5">{plan.priceYearly.toLocaleString()} / year</p>
+                    {billing === "yearly" && plan.price_yearly > 0 && (
+                      <p className="text-xs text-green-600 mt-0.5">${plan.price_yearly} / year</p>
                     )}
                   </div>
                 </CardHeader>
 
                 <CardContent className="flex-1 pt-0 pb-3 space-y-3">
-                  {/* Image Design */}
+                  {/* Credits */}
                   <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
+                      <Zap className="h-3 w-3" /> Credits
+                    </p>
+                    <ul className="space-y-0.5">
+                      <FeatureRow label="Monthly credits" value={displayNum(plan.monthly_credits, " cr")} active={true} />
+                      <FeatureRow label="Daily limit" value={displayNum(plan.rate_limit_daily, "/day")} active={true} />
+                    </ul>
+                  </div>
+
+                  {/* Image Design */}
+                  <div className="border-t pt-2.5">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1">
                       <Newspaper className="h-3 w-3" /> Image Design
                     </p>
                     <ul className="space-y-0.5">
-                      <FeatureRow label="Cards/day" value={displayNum(plan.cardsPerDay)} active={plan.hasImageGenerator} />
-                      <FeatureRow label="Templates" value={displayNum(plan.maxTemplates)} active={plan.hasImageGenerator} />
-                      <FeatureRow label="Saved designs" value={displayNum(plan.maxSavedDesigns)} active={plan.hasImageGenerator} />
-                      <FeatureRow label="Custom watermark" active={plan.customWatermark} />
-                      <FeatureRow label="Overlay upload" active={plan.overlayUpload} />
+                      <FeatureRow label="Templates"      value={displayNum(plan.max_templates)}    active={plan.has_image_generator} />
+                      <FeatureRow label="Saved designs"  value={displayNum(plan.max_saved_designs)} active={plan.has_image_generator} />
+                      <FeatureRow label="Custom watermark" active={plan.has_custom_watermark} />
+                      <FeatureRow label="Overlay upload"   active={plan.has_overlay_upload} />
                     </ul>
                   </div>
 
@@ -289,16 +329,11 @@ export default function Subscription() {
                       <Rss className="h-3 w-3" /> Blog Automation
                     </p>
                     <ul className="space-y-0.5">
-                      <FeatureRow label="Full automation" active={plan.hasBlogAutomation} />
-                      <FeatureRow
-                        label="Articles/month"
-                        value={plan.hasBlogAutomation ? displayNum(plan.articlesPerMonth) : undefined}
-                        active={plan.hasBlogAutomation}
-                      />
+                      <FeatureRow label="Full automation" active={plan.has_blog_automation} />
                       <FeatureRow
                         label="WordPress sites"
-                        value={plan.hasBlogAutomation ? displayNum(plan.maxSites) : undefined}
-                        active={plan.hasBlogAutomation}
+                        value={plan.has_blog_automation ? displayNum(plan.max_sites) : undefined}
+                        active={plan.has_blog_automation}
                       />
                     </ul>
                   </div>
@@ -307,9 +342,9 @@ export default function Subscription() {
                   <div className="border-t pt-2.5">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">General</p>
                     <ul className="space-y-0.5">
-                      <FeatureRow label="API Access" active={plan.apiAccess} />
-                      <FeatureRow label="Telegram Bot" active={plan.telegramBot} />
-                      <FeatureRow label="Credits" value={`${plan.credits.toLocaleString()} pts`} active={true} />
+                      <FeatureRow label="API Access"        active={plan.has_api_access} />
+                      <FeatureRow label="Telegram Bot"      active={plan.has_telegram_bot} />
+                      <FeatureRow label="Priority support"  active={plan.has_priority_support} />
                     </ul>
                   </div>
                 </CardContent>
@@ -319,7 +354,7 @@ export default function Subscription() {
                     <Button className="w-full" disabled variant="outline">Current Plan</Button>
                   ) : (
                     <Button className="w-full" variant={plan.slug === "pro" ? "default" : "outline"}>
-                      {plan.priceMonthly === 0 ? "Use for Free" : `Upgrade to ${plan.name}`}
+                      {plan.price_monthly === 0 ? "Use for Free" : `Upgrade to ${plan.name}`}
                     </Button>
                   )}
                 </CardFooter>

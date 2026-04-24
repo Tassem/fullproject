@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { eq } from "drizzle-orm";
-import { db, articlesTable, agentPromptsTable, pipelineLogsTable, sitesTable } from "@workspace/db";
+import { db, articlesTable, agentPromptsTable, pipelineLogsTable, sitesTable, usersTable, creditTransactionsTable, systemSettingsTable } from "@workspace/db";
 import type { Article } from "@workspace/db";
 import { parse } from "node-html-parser";
 import {
@@ -1091,6 +1091,33 @@ ${cleaned}`;
         wp_post_url: post.link,
         article_status: "published",
       });
+      // Deduct points per published article (read from system settings)
+      const fresh = (await db.select().from(articlesTable).where(eq(articlesTable.id, articleId)))[0] as Article;
+      if (fresh?.user_id) {
+        const [settingRow] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "points_burn_per_article")).limit(1);
+        const articleCost = parseInt(settingRow?.value ?? "5");
+        if (articleCost > 0) {
+          const [usr] = await db.select().from(usersTable).where(eq(usersTable.id, fresh.user_id)).limit(1);
+          if (usr) {
+            // Deduct from monthly first, then purchased
+            const monthly = usr.monthly_credits ?? 0;
+            const purchased = usr.purchased_credits ?? 0;
+            let newMonthly = monthly;
+            let newPurchased = purchased;
+            let toDeduct = articleCost;
+            if (newMonthly >= toDeduct) { newMonthly -= toDeduct; }
+            else { toDeduct -= newMonthly; newMonthly = 0; newPurchased = Math.max(0, newPurchased - toDeduct); }
+            await db.update(usersTable).set({ monthly_credits: newMonthly, purchased_credits: newPurchased }).where(eq(usersTable.id, fresh.user_id));
+            await db.insert(creditTransactionsTable).values({
+              userId: fresh.user_id,
+              type: "spend",
+              amount: -articleCost,
+              description: `Article published to WordPress`,
+              service: "blog_automation",
+            });
+          }
+        }
+      }
     }
   });
   if (!publishOk) return;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus, Globe, Rss, Edit2, Trash2, CheckCircle, XCircle,
-  Bot, RefreshCw, FolderOpen, Loader2, X, BarChart2, Clock, Save,
+  Bot, RefreshCw, FolderOpen, Loader2, X, BarChart2, Clock, Save, Lock,
 } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -115,12 +115,15 @@ async function fetchSites(): Promise<{ sites: Site[] }> {
 }
 
 async function createSite(data: typeof EMPTY_FORM) {
-  const r = await fetch(`/api/sites`, {
+  const r = await fetch(`${BASE_URL}api/sites`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("pro_token")}` },
     body: JSON.stringify(data),
   });
-  if (!r.ok) throw new Error("Failed to create site");
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
+    throw new Error(body.message || body.error || "Failed to create site");
+  }
   return r.json() as Promise<Site>;
 }
 
@@ -609,6 +612,14 @@ function RssFeedsManager({
 
 // ── Main Sites component ────────────────────────────────────────────────────────
 
+const AUTH = () => ({ "Authorization": `Bearer ${localStorage.getItem("pro_token")}` });
+
+async function fetchSubscription() {
+  const r = await fetch(`${BASE_URL}api/subscription`, { headers: AUTH() });
+  if (!r.ok) return null;
+  return r.json();
+}
+
 export default function Sites() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -627,12 +638,29 @@ export default function Sites() {
     refetchInterval: 10000,
   });
 
+  const { data: subData } = useQuery({
+    queryKey: ["subscription"],
+    queryFn: fetchSubscription,
+    staleTime: 30000,
+  });
+
   const { toast } = useToast();
+
+  // ── Plan limit enforcement (UI layer) ────────────────────────────────────
+  const usage = subData?.usage;
+  const sitesLimit: number = usage?.sites_limit ?? 0;
+  const hasBlogAutomation: boolean = usage?.has_blog_automation ?? false;
+  const sites: Site[] = data?.sites ?? [];
+  const sitesUsed = sites.length;
+  const atLimit = hasBlogAutomation && sitesLimit > 0 && sitesUsed >= sitesLimit;
+  const noBlogPlan = !hasBlogAutomation;
+  const canAddSite = !noBlogPlan && !atLimit;
 
   const createMutation = useMutation({
     mutationFn: createSite,
     onSuccess: (site) => {
       qc.invalidateQueries({ queryKey: ["sites"] });
+      qc.invalidateQueries({ queryKey: ["subscription"] });
       setSavedSiteId(site.id);
       setEditSite(site);
       toast({
@@ -746,7 +774,6 @@ export default function Sites() {
 
   const wpCredentialsFilled = !!(form.wp_url && form.wp_username && form.wp_password);
   const currentSiteId = savedSiteId ?? editSite?.id ?? null;
-  const sites = data?.sites ?? [];
 
   return (
     <div className="p-8 space-y-6">
@@ -755,12 +782,35 @@ export default function Sites() {
           <h1 className="text-2xl font-bold text-foreground">Sites</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Manage your WordPress sites and RSS sources
+            {hasBlogAutomation && sitesLimit > 0 && (
+              <span className="ml-2 text-xs text-muted-foreground/60">
+                ({sitesUsed}/{sitesLimit} used)
+              </span>
+            )}
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2">
-          <Plus className="w-4 h-4" />
-          Add Site
-        </Button>
+        <div className="flex flex-col items-end gap-1">
+          <Button
+            onClick={canAddSite ? openCreate : undefined}
+            disabled={!canAddSite}
+            className="gap-2"
+            title={
+              noBlogPlan
+                ? "Blog Automation is not included in your current plan"
+                : atLimit
+                  ? `You have reached the maximum number of sites (${sitesLimit}) on your plan`
+                  : undefined
+            }
+          >
+            {canAddSite ? <Plus className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+            Add Site
+          </Button>
+          {(noBlogPlan || atLimit) && (
+            <span className="text-[11px] text-amber-400/80">
+              {noBlogPlan ? "Upgrade to add sites" : `Limit reached (${sitesUsed}/${sitesLimit})`}
+            </span>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -772,10 +822,19 @@ export default function Sites() {
       ) : sites.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center">
           <Globe className="w-12 h-12 text-muted-foreground/30 mb-4" />
-          <p className="text-muted-foreground">No sites yet. Add your first WordPress site.</p>
-          <Button onClick={openCreate} className="mt-4 gap-2" variant="outline">
-            <Plus className="w-4 h-4" /> Add Site
-          </Button>
+          {noBlogPlan ? (
+            <>
+              <p className="text-muted-foreground">Blog Automation is not included in your current plan.</p>
+              <p className="text-sm text-amber-400/80 mt-1">Upgrade your plan to add WordPress sites.</p>
+            </>
+          ) : (
+            <>
+              <p className="text-muted-foreground">No sites yet. Add your first WordPress site.</p>
+              <Button onClick={openCreate} className="mt-4 gap-2" variant="outline" disabled={!canAddSite}>
+                <Plus className="w-4 h-4" /> Add Site
+              </Button>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">

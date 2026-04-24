@@ -17,6 +17,8 @@ import {
   Link, Hash, Send, MessageCircle, Mail, Phone, ArrowRight, ExternalLink,
 } from "lucide-react";
 
+interface PendingReq { id: number; status: string; adminNotes: string | null; paymentMethod: string; createdAt: string; }
+
 interface UpgradeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -25,6 +27,8 @@ interface UpgradeModalProps {
   price: number;
   type?: "plan_upgrade" | "points_purchase";
   pointsAmount?: number;
+  hasPendingRequest?: boolean;
+  lastRejected?: PendingReq | null;
 }
 
 interface SiteInfo {
@@ -39,6 +43,8 @@ export function UpgradeModal({
   price,
   type = "plan_upgrade",
   pointsAmount,
+  hasPendingRequest = false,
+  lastRejected = null,
 }: UpgradeModalProps) {
   const [step, setStep] = useState<"select" | "proof" | "success">("select");
   const [method, setMethod] = useState<"paypal" | "bank_transfer">("paypal");
@@ -114,6 +120,10 @@ export function UpgradeModal({
         body: JSON.stringify(body),
       });
 
+      if (r.status === 409) {
+        setStep("success");
+        return;
+      }
       if (!r.ok) throw new Error("Submission failed");
       setStep("success");
     } catch (err) {
@@ -200,6 +210,32 @@ export function UpgradeModal({
             </div>
           ) : step === "select" ? (
             <div className="space-y-6">
+
+              {/* ── Pending warning banner ── */}
+              {hasPendingRequest && (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/8">
+                  <span className="text-xl shrink-0">⏳</span>
+                  <div>
+                    <p className="text-sm font-black text-amber-400">Request already under review</p>
+                    <p className="text-xs text-zinc-500 mt-1">You already sent a payment request for this plan. Please wait for admin review before submitting again.</p>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Previous rejection notice ── */}
+              {!hasPendingRequest && lastRejected && (
+                <div className="flex items-start gap-3 p-4 rounded-xl border border-rose-500/30 bg-rose-500/8">
+                  <span className="text-xl shrink-0">❌</span>
+                  <div>
+                    <p className="text-sm font-black text-rose-400">Previous request was rejected</p>
+                    {lastRejected.adminNotes && (
+                      <p className="text-xs text-zinc-400 mt-1">Reason: {lastRejected.adminNotes}</p>
+                    )}
+                    <p className="text-xs text-zinc-500 mt-1">You can submit a new request with corrected proof below.</p>
+                  </div>
+                </div>
+              )}
+
               {/* Payment Method */}
               <div className="space-y-3">
                 <Label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">Payment Method</Label>
@@ -283,9 +319,10 @@ export function UpgradeModal({
 
               <Button
                 onClick={() => setStep("proof")}
-                className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-black"
+                disabled={hasPendingRequest}
+                className="w-full h-12 rounded-xl bg-indigo-600 hover:bg-indigo-500 font-black disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                I've Made the Payment <ArrowRight className="w-4 h-4 ml-2" />
+                {hasPendingRequest ? "Request Pending Review…" : <>I've Made the Payment <ArrowRight className="w-4 h-4 ml-2" /></>}
               </Button>
             </div>
           ) : (

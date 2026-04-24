@@ -4,10 +4,17 @@ import { db, articlesTable, settingsTable, usersTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { runPipeline, getPipelineRunning } from "../pipeline/index.js";
+import { assertFeature, rejectGuard } from "../lib/planGuard";
 
 const router = Router();
 
 router.post("/run", requireAuth, async (req, res) => {
+  const user = (req as any).user as typeof usersTable.$inferSelect;
+
+  // ── Plan enforcement: has_blog_automation ────────────────────────────────
+  const guard = await assertFeature(user.id, "has_blog_automation");
+  if (!guard.ok) return rejectGuard(res, guard);
+
   try {
     const result = await runPipeline();
     return res.json(result);

@@ -89,7 +89,8 @@ const CANVAS_DEFAULT: CanvasLayout = {
 };
 
 interface SavedDesign {
-  id: string;
+  id: string | number;
+  db_id?: number;
   name: string;
   createdAt: number;
   settings: {
@@ -233,8 +234,9 @@ export default function Generate() {
   const [canvasLayout, setCanvasLayout] = useState<CanvasLayout>(s.canvasLayout ? { ...CANVAS_DEFAULT, ...s.canvasLayout } : CANVAS_DEFAULT);
   const [selElem, setSelElem]           = useState<ElemKey | null>(null);
 
-  // Saved designs (local)
+  // Saved designs (DB-backed, localStorage used as initial cache)
   const [savedDesigns, setSavedDesigns] = useState<SavedDesign[]>(loadDesigns());
+  const [designsLimit, setDesignsLimit] = useState<number>(10);
   const [saveNameInput, setSaveNameInput] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
 
@@ -413,17 +415,29 @@ export default function Generate() {
         if (d.token) setBotToken(d.token);
       }).catch(() => {});
 
-    // Auto-sync all locally-saved designs to server (idempotent — server upserts by name)
-    const local = loadDesigns();
-    if (local.length === 0) return;
-    local.forEach(design => {
-      const { logoImage: _img, ...serverSettings } = design.settings as any;
-      fetch("/api/designs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: design.name, settings: serverSettings }),
+    // Load designs from DB (source of truth) and fetch limit from subscription
+    fetch("/api/saved-designs", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data?.designs) return;
+        const dbDesigns: SavedDesign[] = data.designs.map((d: any) => ({
+          id: d.id.toString(),
+          db_id: d.id,
+          name: d.name,
+          createdAt: new Date(d.created_at).getTime(),
+          settings: d.design_data,
+        }));
+        setSavedDesigns(dbDesigns);
+        localStorage.setItem("ncg-pro-designs", JSON.stringify(dbDesigns));
       }).catch(() => {});
-    });
+
+    fetch("/api/subscription", { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.usage?.saved_designs_limit !== undefined) {
+          setDesignsLimit(data.usage.saved_designs_limit);
+        }
+      }).catch(() => {});
   }, []);
 
   // ── API Templates (server-side) ───────────────────────────────────────────
@@ -716,17 +730,28 @@ export default function Generate() {
       canvasMode,
       canvasLayout,
     };
-    const design: SavedDesign = { id: Date.now().toString(), name, createdAt: Date.now(), settings };
+    const tempId = Date.now().toString();
+    const design: SavedDesign = { id: tempId, name, createdAt: Date.now(), settings };
     setSavedDesigns(prev => [design, ...prev.filter(d => d.name !== name)]);
     setSaveNameInput(""); setShowSaveInput(false);
     setActiveTab("saved");
-    // Sync to server (strip logoImage base64 but keep logoPhotoFilename)
+    // Persist to DB (strip logoImage base64 but keep logoPhotoFilename)
     const token = localStorage.getItem("pro_token");
     const { logoImage: _img, ...serverSettings } = settings;
-    fetch("/api/designs", {
+    fetch("/api/saved-designs", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name, settings: serverSettings }),
+      body: JSON.stringify({ name, design_data: serverSettings }),
+    }).then(r => r.json()).then(saved => {
+      if (saved?.id) {
+        // Replace tempId with real DB id
+        setSavedDesigns(prev => prev.map(d =>
+          d.id === tempId ? { ...d, id: saved.id.toString(), db_id: saved.id } : d
+        ));
+      } else if (saved?.code === "PLAN_LIMIT_EXCEEDED") {
+        toast({ title: "Limit Reached", description: saved.message, variant: "destructive" });
+        setSavedDesigns(prev => prev.filter(d => d.id !== tempId));
+      }
     }).catch(() => {});
   }, [saveNameInput, selectedTemplateId, aspectRatio, font, fontSize, fontWeight, textShadow, logoPos, logoInvert, useLogoText, logoText, showSubtitle, showLabel, imgPositionX, imgPositionY, customBannerColor, customTextColor, customPhotoHeight, headline, subtitle, label, logoImage, logoServerFilename, overlayImage, overlayServerFilename, canvasMode, canvasLayout]);
 
@@ -799,6 +824,18 @@ export default function Generate() {
       setOverlayServerFilename("");
     }
     setActiveTab("content");
+  }, []);
+
+  const handleDeleteDesign = useCallback((d: SavedDesign) => {
+    setSavedDesigns(prev => prev.filter(x => x.id !== d.id));
+    const token = localStorage.getItem("pro_token");
+    const dbId = d.db_id ?? (typeof d.id === "number" ? d.id : null);
+    if (dbId && token) {
+      fetch(`/api/saved-designs/${dbId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
   }, []);
 
   const exportDesigns = useCallback(() => {
@@ -944,7 +981,7 @@ export default function Generate() {
   const tabs: { id: TabId; label: string }[] = [
     { id: "content",    label: "Content" },
     { id: "design",     label: "Design" },
-    { id: "saved",      label: `My Templates${savedDesigns.length ? ` (${savedDesigns.length})` : ""}` },
+    { id: "saved",      label: `My Templates (${savedDesigns.length}/${designsLimit})` },
     { id: "typography", label: "Typography" },
     { id: "api",        label: "API" },
     { id: "settings",   label: "Settings" },
@@ -983,7 +1020,7 @@ export default function Generate() {
                 <Save className="w-4 h-4" />
                 <span className="text-[10px]">My Tmpl</span>
               </TabsTrigger>
-              {(user?.isAdmin || user?.planDetails?.apiAccess === true) && (
+              {(user?.isAdmin || user?.planDetails?.has_api_access === true) && (
                 <>
                   <TabsTrigger value="api" className="flex flex-col gap-1 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                     <Zap className="w-4 h-4" />
@@ -1356,8 +1393,14 @@ export default function Generate() {
                 </Accordion>
                 
                 <div className="flex gap-2 pt-2">
-                  <Button onClick={() => setShowSaveInput(v => !v)} className="flex-1 gap-2">
-                    <Save className="w-4 h-4" /> Save Current Design
+                  <Button
+                    onClick={() => setShowSaveInput(v => !v)}
+                    className="flex-1 gap-2"
+                    disabled={savedDesigns.length >= designsLimit}
+                    title={savedDesigns.length >= designsLimit ? `Limit reached (${savedDesigns.length}/${designsLimit}). Delete a design or upgrade your plan.` : undefined}
+                  >
+                    <Save className="w-4 h-4" />
+                    {savedDesigns.length >= designsLimit ? `Limit Reached (${savedDesigns.length}/${designsLimit})` : "Save Current Design"}
                   </Button>
                 </div>
 
@@ -1458,17 +1501,25 @@ export default function Generate() {
 
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-bold">Local Designs</CardTitle>
-                    <CardDescription className="text-[10px]">Saved in your current browser</CardDescription>
+                    <CardTitle className="text-sm font-bold flex items-center justify-between">
+                      Saved Designs
+                      <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${savedDesigns.length >= designsLimit ? "bg-red-500/20 text-red-400" : "bg-muted text-muted-foreground"}`}>
+                        {savedDesigns.length} / {designsLimit}
+                      </span>
+                    </CardTitle>
+                    <CardDescription className="text-[10px]">Synced to your account across all devices</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-2">
                     {savedDesigns.length === 0 ? (
                       <p className="text-center text-xs text-muted-foreground py-4">No saved designs</p>
                     ) : (
                       savedDesigns.map(d => (
-                        <div key={d.id} className="flex items-center justify-between p-2 border rounded-lg group">
+                        <div key={String(d.id)} className="flex items-center justify-between p-2 border rounded-lg group">
                           <span className="text-xs font-medium truncate flex-1">{d.name}</span>
-                          <Button size="sm" variant="ghost" className="h-7 px-2 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleLoadDesign(d)}>Load</Button>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => handleLoadDesign(d)}>Load</Button>
+                            <Button size="sm" variant="ghost" className="h-7 px-2 text-red-400 hover:text-red-300" onClick={() => handleDeleteDesign(d)}>✕</Button>
+                          </div>
                         </div>
                       ))
                     )}

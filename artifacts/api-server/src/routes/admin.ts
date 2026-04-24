@@ -1,35 +1,41 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, plansTable, generatedImagesTable, articlesTable, sitesTable, systemSettingsTable, templatesTable } from "@workspace/db";
-import { eq, count, isNull, and } from "drizzle-orm";
+import { usersTable, plansTable, generatedImagesTable, articlesTable, sitesTable, systemSettingsTable, templatesTable, creditTransactionsTable, paymentRequestsTable, planAddonsTable, userAddonsTable } from "@workspace/db";
+import { eq, count, isNull, and, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
+import { invalidateEffectiveLimitsCache } from "../lib/planGuard";
 
 const router = Router();
 
-// ─── Helper: map plansTable row → frontend snake_case format ─────────────────
 function formatPlan(p: typeof plansTable.$inferSelect) {
   return {
     id: p.id,
-    name: p.slug,
-    display_name: p.name,
-    description: "",
-    price_monthly: p.priceMonthly,
-    price_yearly: p.priceYearly,
-    max_sites: p.maxSites,
-    max_articles_per_month: p.articlesPerMonth,
-    cards_per_day: p.cardsPerDay,
-    max_templates: p.maxTemplates,
-    credits: p.credits,
-    is_active: p.isActive,
-    sort_order: p.sortOrder,
-    has_blog_automation: p.hasBlogAutomation,
-    has_image_generator: p.hasImageGenerator,
-    api_access: p.apiAccess,
+    slug: p.slug,
+    name: p.name,
+    description: p.description,
+    monthly_credits: p.monthly_credits,
+    max_sites: p.max_sites,
+    max_templates: p.max_templates,
+    max_saved_designs: p.max_saved_designs,
+    has_blog_automation: p.has_blog_automation,
+    has_image_generator: p.has_image_generator,
+    has_telegram_bot: p.has_telegram_bot,
+    has_api_access: p.has_api_access,
+    has_overlay_upload: p.has_overlay_upload,
+    has_custom_watermark: p.has_custom_watermark,
+    has_priority_processing: p.has_priority_processing,
+    has_priority_support: p.has_priority_support,
+    rate_limit_daily: p.rate_limit_daily,
+    rate_limit_hourly: p.rate_limit_hourly,
+    price_monthly: p.price_monthly,
+    price_yearly: p.price_yearly,
+    sort_order: p.sort_order,
+    is_active: p.is_active,
+    is_free: p.is_free,
     created_at: p.createdAt,
   };
 }
 
-// ─── Helper: map usersTable row → frontend format ────────────────────────────
 function formatUser(u: typeof usersTable.$inferSelect, extras: { articles_used: number; sites_used: number }) {
   return {
     id: u.id,
@@ -37,12 +43,17 @@ function formatUser(u: typeof usersTable.$inferSelect, extras: { articles_used: 
     email: u.email,
     role: u.isAdmin ? "admin" : "user",
     plan: u.plan,
-    points_balance: u.credits ?? 0,
+    monthly_credits: u.monthly_credits ?? 0,
+    purchased_credits: u.purchased_credits ?? 0,
+    total_credits: (u.monthly_credits ?? 0) + (u.purchased_credits ?? 0),
+    daily_usage: u.daily_usage_count ?? 0,
     articles_used: extras.articles_used,
     sites_used: extras.sites_used,
     subscription_status: u.plan === "free" ? null : "active",
     created_at: u.createdAt,
     is_admin: u.isAdmin,
+    api_key: u.apiKey,
+    bot_code: u.botCode,
   };
 }
 
@@ -68,27 +79,23 @@ router.get("/stats", requireAdmin, async (_req, res) => {
   });
 });
 
-// GET /admin/usage — overview stats for BlogAdmin OverviewTab
+// GET /admin/usage
 router.get("/usage", requireAdmin, async (_req, res) => {
   const [usersRow] = await db.select({ count: count() }).from(usersTable);
-  const plans = await db.select().from(plansTable).where(eq(plansTable.isActive, true));
-
+  const plans = await db.select().from(plansTable).where(eq(plansTable.is_active, true));
   return res.json({
     total_users: Number(usersRow.count),
-    pending_payments: 0,
-    plan_breakdown: plans.map((p) => ({
-      plan: p.slug,
-      count: 0,
-    })),
+    pending_payments: await db.select({ count: count() }).from(paymentRequestsTable).where(eq(paymentRequestsTable.status, "pending")).then(r => Number(r[0]?.count ?? 0)),
+    plan_breakdown: plans.map((p) => ({ plan: p.slug, count: 0 })),
   });
 });
 
-// GET /admin/users — list all users
+// GET /admin/users
 router.get("/users", requireAdmin, async (_req, res) => {
   const users = await db.select().from(usersTable);
   const formatted = await Promise.all(users.map(async (u) => {
     const [articlesRow] = await db.select({ count: count() }).from(articlesTable)
-      .where(eq(articlesTable.site_id, u.id)); // approximate
+      .where(eq(articlesTable.user_id, u.id));
     const [sitesRow] = await db.select({ count: count() }).from(sitesTable).where(eq(sitesTable.user_id, u.id));
     return formatUser(u, {
       articles_used: Number(articlesRow?.count ?? 0),
@@ -101,7 +108,7 @@ router.get("/users", requireAdmin, async (_req, res) => {
 // PATCH /admin/users/:id
 router.patch("/users/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const { plan, isAdmin, credits } = req.body;
+  const { plan, isAdmin } = req.body;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   if (!user) return res.status(404).json({ error: "User not found" });
@@ -109,84 +116,129 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
   const updates: Partial<typeof usersTable.$inferInsert> = {};
   if (plan !== undefined) updates.plan = plan;
   if (isAdmin !== undefined) updates.isAdmin = isAdmin;
-  if (credits !== undefined) updates.credits = credits;
 
   const [updated] = await db.update(usersTable).set(updates).where(eq(usersTable.id, id)).returning();
+
+  // Auto-void any pending plan_upgrade requests when plan is manually changed
+  if (plan !== undefined) {
+    await db.update(paymentRequestsTable).set({
+      status: "cancelled",
+      adminNotes: "Voided automatically — plan was updated manually by admin.",
+      updatedAt: new Date(),
+    }).where(and(
+      eq(paymentRequestsTable.userId, id),
+      eq(paymentRequestsTable.status, "pending"),
+      eq(paymentRequestsTable.type, "plan_upgrade"),
+    ));
+  }
+
   return res.json(formatUser(updated, { articles_used: 0, sites_used: 0 }));
 });
 
-// POST /admin/users/:id/grant-points — add credits to a user
+// POST /admin/users/:id/grant-points
 router.post("/users/:id/grant-points", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const { amount } = req.body;
+  const { amount, description, type } = req.body;
   if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   if (!user) return res.status(404).json({ error: "User not found" });
 
-  const newCredits = (user.credits ?? 0) + Number(amount);
-  const [updated] = await db.update(usersTable).set({ credits: newCredits }).where(eq(usersTable.id, id)).returning();
+  const delta = Number(amount);
+  const newPurchased = Math.max(0, (user.purchased_credits ?? 0) + delta);
+
+  const [updated] = await db.update(usersTable)
+    .set({ purchased_credits: newPurchased })
+    .where(eq(usersTable.id, id)).returning();
+
+  await db.insert(creditTransactionsTable).values({
+    userId: id,
+    type: delta > 0 ? (type || "earn") : "spend",
+    amount: delta,
+    description: description || (delta > 0 ? "منح الأدمن" : "خصم الأدمن"),
+    service: "admin",
+  });
+
   return res.json(formatUser(updated, { articles_used: 0, sites_used: 0 }));
 });
 
-// POST /admin/users/:id/change-plan — change user plan
+// POST /admin/users/:id/change-plan
 router.post("/users/:id/change-plan", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const { plan_name } = req.body;
+  const { plan_name, grant_credits } = req.body;
   if (!plan_name) return res.status(400).json({ error: "plan_name is required" });
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   if (!user) return res.status(404).json({ error: "User not found" });
 
-  const [updated] = await db.update(usersTable).set({ plan: plan_name }).where(eq(usersTable.id, id)).returning();
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.slug, plan_name)).limit(1);
+  const planMonthlyCredits = plan?.monthly_credits ?? 0;
+
+  const setUpdates: Partial<typeof usersTable.$inferInsert> = {
+    plan: plan_name,
+    credits_reset_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  };
+
+  if (grant_credits !== false && planMonthlyCredits > 0) {
+    setUpdates.monthly_credits = planMonthlyCredits;
+  }
+
+  const [updated] = await db.update(usersTable).set(setUpdates).where(eq(usersTable.id, id)).returning();
+
+  if (grant_credits !== false && planMonthlyCredits > 0) {
+    await db.insert(creditTransactionsTable).values({
+      userId: id,
+      type: "earn",
+      amount: planMonthlyCredits,
+      description: `تفعيل باقة: ${plan?.name ?? plan_name} (${planMonthlyCredits} نقطة شهرية)`,
+      service: "subscription",
+    });
+  }
+
   return res.json(formatUser(updated, { articles_used: 0, sites_used: 0 }));
 });
 
 // DELETE /admin/users/:id
 router.delete("/users/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
-  if (!user) return res.status(404).json({ error: "User not found" });
   await db.delete(usersTable).where(eq(usersTable.id, id));
   return res.json({ success: true });
 });
 
 // GET /admin/plans
 router.get("/plans", requireAdmin, async (_req, res) => {
-  const plans = await db.select().from(plansTable).orderBy(plansTable.sortOrder);
+  const plans = await db.select().from(plansTable).orderBy(plansTable.sort_order);
   return res.json({ plans: plans.map(formatPlan) });
 });
 
 // POST /admin/plans
 router.post("/plans", requireAdmin, async (req, res) => {
-  const {
-    name, display_name, description, price_monthly, price_yearly,
-    max_sites, max_articles_per_month, cards_per_day, max_templates,
-    credits, is_active, sort_order,
-  } = req.body;
-
-  if (!name) return res.status(400).json({ error: "name (slug) is required" });
+  const body = req.body;
+  if (!body.slug) return res.status(400).json({ error: "slug is required" });
 
   const [plan] = await db.insert(plansTable).values({
-    name: display_name || name,
-    slug: name,
-    priceMonthly: price_monthly || 0,
-    priceYearly: price_yearly || 0,
-    cardsPerDay: cards_per_day || 5,
-    maxTemplates: max_templates || 3,
-    maxSavedDesigns: 5,
-    maxSites: max_sites || 1,
-    articlesPerMonth: max_articles_per_month || 0,
-    hasTelegramBot: false,
-    hasBlogAutomation: (max_articles_per_month || 0) > 0,
-    hasImageGenerator: true,
-    apiAccess: false,
-    telegramBot: false,
-    overlayUpload: false,
-    customWatermark: false,
-    credits: credits || 10,
-    isActive: is_active !== false,
-    sortOrder: sort_order || 0,
+    name: body.name || body.slug,
+    slug: body.slug,
+    description: body.description,
+    monthly_credits: body.monthly_credits ?? 0,
+    max_sites: body.max_sites ?? 1,
+    max_templates: body.max_templates ?? 5,
+    max_saved_designs: body.max_saved_designs ?? 10,
+    has_blog_automation: body.has_blog_automation ?? false,
+    has_image_generator: body.has_image_generator ?? true,
+    has_telegram_bot: body.has_telegram_bot ?? false,
+    has_api_access: body.has_api_access ?? false,
+    has_overlay_upload: body.has_overlay_upload ?? false,
+    has_custom_watermark: body.has_custom_watermark ?? false,
+    has_priority_processing: body.has_priority_processing ?? false,
+    has_priority_support: body.has_priority_support ?? false,
+    rate_limit_daily: body.rate_limit_daily ?? 50,
+    rate_limit_hourly: body.rate_limit_hourly ?? 20,
+    price_monthly: body.price_monthly ?? 0,
+    price_yearly: body.price_yearly ?? 0,
+    sort_order: body.sort_order ?? 0,
+    is_active: body.is_active !== false,
+    is_free: body.is_free ?? false,
   }).returning();
 
   return res.status(201).json(formatPlan(plan));
@@ -199,24 +251,17 @@ router.put("/plans/:id", requireAdmin, async (req, res) => {
   if (!existing) return res.status(404).json({ error: "Plan not found" });
 
   const body = req.body;
-  const updates: Partial<typeof plansTable.$inferInsert> = {};
-  if (body.display_name !== undefined) updates.name = body.display_name;
-  if (body.price_monthly !== undefined) updates.priceMonthly = body.price_monthly;
-  if (body.price_yearly !== undefined) updates.priceYearly = body.price_yearly;
-  if (body.max_sites !== undefined) updates.maxSites = body.max_sites;
-  if (body.max_articles_per_month !== undefined) updates.articlesPerMonth = body.max_articles_per_month;
-  if (body.cards_per_day !== undefined) updates.cardsPerDay = body.cards_per_day;
-  if (body.max_templates !== undefined) updates.maxTemplates = body.max_templates;
-  if (body.max_saved_designs !== undefined) updates.maxSavedDesigns = body.max_saved_designs;
-  if (body.has_blog_automation !== undefined) updates.hasBlogAutomation = body.has_blog_automation;
-  if (body.has_image_generator !== undefined) updates.hasImageGenerator = body.has_image_generator;
-  if (body.api_access !== undefined) updates.apiAccess = body.api_access;
-  if (body.telegram_bot !== undefined) updates.telegramBot = body.telegram_bot;
-  if (body.overlay_upload !== undefined) updates.overlayUpload = body.overlay_upload;
-  if (body.custom_watermark !== undefined) updates.customWatermark = body.custom_watermark;
-  if (body.credits !== undefined) updates.credits = body.credits;
-  if (body.is_active !== undefined) updates.isActive = body.is_active;
-  if (body.sort_order !== undefined) updates.sortOrder = body.sort_order;
+  const updates: Partial<typeof plansTable.$inferInsert> = { updatedAt: new Date() };
+  const fields = [
+    "name","description","monthly_credits","max_sites","max_templates","max_saved_designs",
+    "has_blog_automation","has_image_generator","has_telegram_bot","has_api_access",
+    "has_overlay_upload","has_custom_watermark","has_priority_processing","has_priority_support",
+    "rate_limit_daily","rate_limit_hourly","price_monthly","price_yearly","sort_order","is_active","is_free",
+  ] as const;
+
+  for (const f of fields) {
+    if (body[f] !== undefined) (updates as any)[f] = body[f];
+  }
 
   const [updated] = await db.update(plansTable).set(updates).where(eq(plansTable.id, id)).returning();
   return res.json(formatPlan(updated));
@@ -225,8 +270,6 @@ router.put("/plans/:id", requireAdmin, async (req, res) => {
 // DELETE /admin/plans/:id
 router.delete("/plans/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const [existing] = await db.select().from(plansTable).where(eq(plansTable.id, id)).limit(1);
-  if (!existing) return res.status(404).json({ error: "Plan not found" });
   await db.delete(plansTable).where(eq(plansTable.id, id));
   return res.json({ success: true });
 });
@@ -235,9 +278,7 @@ router.delete("/plans/:id", requireAdmin, async (req, res) => {
 router.get("/settings", requireAdmin, async (_req, res) => {
   const rows = await db.select().from(systemSettingsTable);
   const settings: Record<string, string> = {};
-  for (const row of rows) {
-    settings[row.key] = row.value ?? "";
-  }
+  for (const row of rows) settings[row.key] = row.value ?? "";
   return res.json({ settings });
 });
 
@@ -254,13 +295,11 @@ router.put("/settings", requireAdmin, async (req, res) => {
   }
   const rows = await db.select().from(systemSettingsTable);
   const settings: Record<string, string> = {};
-  for (const row of rows) {
-    settings[row.key] = row.value ?? "";
-  }
+  for (const row of rows) settings[row.key] = row.value ?? "";
   return res.json({ settings });
 });
 
-// POST /admin/test-ai — test AI provider connection
+// POST /admin/test-ai
 router.post("/test-ai", requireAdmin, async (req, res) => {
   const { provider, api_key, base_url, model } = req.body as {
     provider: string; api_key: string; base_url?: string; model?: string;
@@ -269,115 +308,69 @@ router.post("/test-ai", requireAdmin, async (req, res) => {
 
   try {
     let endpoint = "";
-    let headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${api_key}`,
-    };
-    let body: Record<string, unknown> = {
-      model: model || "openai/gpt-4o-mini",
-      messages: [{ role: "user", content: "Say OK" }],
-      max_tokens: 5,
-    };
+    let headers: Record<string, string> = { "Content-Type": "application/json", "Authorization": `Bearer ${api_key}` };
+    let body: Record<string, unknown> = { model: model || "openai/gpt-4o-mini", messages: [{ role: "user", content: "Say OK" }], max_tokens: 5 };
 
-    if (provider === "openrouter") {
-      endpoint = "https://openrouter.ai/api/v1/chat/completions";
-      headers["HTTP-Referer"] = "https://newscard.pro";
-    } else if (provider === "openai") {
-      endpoint = "https://api.openai.com/v1/chat/completions";
-      body.model = model || "gpt-4o-mini";
-    } else if (provider === "anthropic") {
+    if (provider === "openrouter") { endpoint = "https://openrouter.ai/api/v1/chat/completions"; headers["HTTP-Referer"] = "https://newscard.pro"; }
+    else if (provider === "openai") { endpoint = "https://api.openai.com/v1/chat/completions"; body.model = model || "gpt-4o-mini"; }
+    else if (provider === "anthropic") {
       endpoint = "https://api.anthropic.com/v1/messages";
-      headers = {
-        "Content-Type": "application/json",
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-      };
+      headers = { "Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01" };
       body = { model: model || "claude-3-haiku-20240307", max_tokens: 5, messages: [{ role: "user", content: "Say OK" }] };
     } else if (provider === "custom" && base_url) {
       endpoint = base_url.replace(/\/$/, "") + "/chat/completions";
-    } else {
-      return res.status(400).json({ ok: false, error: "Unknown provider or missing base_url" });
-    }
+    } else { return res.status(400).json({ ok: false, error: "Unknown provider" }); }
 
     const resp = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body) });
-    if (resp.ok) {
-      return res.json({ ok: true, message: "✅ Connection successful" });
-    } else {
-      const txt = await resp.text();
-      return res.json({ ok: false, error: `HTTP ${resp.status}: ${txt.slice(0, 200)}` });
-    }
+    if (resp.ok) return res.json({ ok: true, message: "✅ Connection successful" });
+    const txt = await resp.text();
+    return res.json({ ok: false, error: `HTTP ${resp.status}: ${txt.slice(0, 200)}` });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return res.json({ ok: false, error: msg });
+    return res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }
 });
 
 // GET /admin/images
 router.get("/images", requireAdmin, async (_req, res) => {
   const images = await db.select({
-    id: generatedImagesTable.id,
-    userId: generatedImagesTable.userId,
-    title: generatedImagesTable.title,
-    imageUrl: generatedImagesTable.imageUrl,
-    aspectRatio: generatedImagesTable.aspectRatio,
-    bannerColor: generatedImagesTable.bannerColor,
+    id: generatedImagesTable.id, userId: generatedImagesTable.userId,
+    title: generatedImagesTable.title, imageUrl: generatedImagesTable.imageUrl,
+    aspectRatio: generatedImagesTable.aspectRatio, bannerColor: generatedImagesTable.bannerColor,
     createdAt: generatedImagesTable.createdAt,
-  }).from(generatedImagesTable)
-    .orderBy(generatedImagesTable.createdAt)
-    .limit(120);
+  }).from(generatedImagesTable).orderBy(generatedImagesTable.createdAt).limit(120);
   return res.json({ images });
 });
 
-// ─── Template Approval Endpoints ──────────────────────────────────────────────
-
-// GET /admin/pending-templates — templates awaiting approval (isApproved IS NULL)
+// Template approval
 router.get("/pending-templates", requireAdmin, async (_req, res) => {
   const pending = await db.select().from(templatesTable)
     .where(and(isNull(templatesTable.isApproved), eq(templatesTable.isSystem, true)));
-  return res.json(pending.map(t => ({
-    ...t,
-    canvasLayout: t.canvasLayout ? JSON.parse(t.canvasLayout) : null,
-  })));
+  return res.json(pending.map(t => ({ ...t, canvasLayout: t.canvasLayout ? JSON.parse(t.canvasLayout) : null })));
 });
 
-// POST /admin/templates/:id/approve — approve a pending template
 router.post("/templates/:id/approve", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const [updated] = await db.update(templatesTable)
-    .set({ isApproved: true, updatedAt: new Date() })
-    .where(eq(templatesTable.id, id))
-    .returning();
+  const [updated] = await db.update(templatesTable).set({ isApproved: true, updatedAt: new Date() }).where(eq(templatesTable.id, id)).returning();
   if (!updated) return res.status(404).json({ error: "Template not found" });
   return res.json({ success: true, id });
 });
 
-// POST /admin/templates/:id/reject — reject a pending template
 router.post("/templates/:id/reject", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const [updated] = await db.update(templatesTable)
-    .set({ isApproved: false, updatedAt: new Date() })
-    .where(eq(templatesTable.id, id))
-    .returning();
+  const [updated] = await db.update(templatesTable).set({ isApproved: false, updatedAt: new Date() }).where(eq(templatesTable.id, id)).returning();
   if (!updated) return res.status(404).json({ error: "Template not found" });
   return res.json({ success: true, id });
 });
 
-// DELETE /admin/templates/:id — admin hard-delete any template
 router.delete("/templates/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
   await db.delete(templatesTable).where(eq(templatesTable.id, id));
   return res.json({ success: true });
 });
 
-// POST /admin/ai-generate-template — Generate canvas layout via AI
+// POST /admin/ai-generate-template
 router.post("/ai-generate-template", requireAdmin, async (req, res) => {
-  const { description, imageBase64, imageMimeType } = req.body as {
-    description?: string;
-    imageBase64?: string;
-    imageMimeType?: string;
-  };
-
-  // ── Read AI provider settings from DB ──
+  const { description, imageBase64, imageMimeType } = req.body as { description?: string; imageBase64?: string; imageMimeType?: string };
   const settRows = await db.select().from(systemSettingsTable);
   const sett: Record<string, string> = {};
   for (const r of settRows) sett[r.key] = r.value;
@@ -385,7 +378,6 @@ router.post("/ai-generate-template", requireAdmin, async (req, res) => {
   const genProvider = sett["ai_provider_template_gen"] ?? "replit_openai";
   const genModel    = sett["ai_model_template_gen"]   ?? "";
 
-  // ── Resolve endpoint, headers, and model based on provider ──
   let endpoint = "";
   let reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
   let model = genModel;
@@ -393,30 +385,29 @@ router.post("/ai-generate-template", requireAdmin, async (req, res) => {
   if (genProvider === "replit_openai") {
     const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
     const apiKey  = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    if (!baseUrl || !apiKey) return res.status(503).json({ error: "Replit AI integration not configured. Go to AI Roles settings to configure." });
+    if (!baseUrl || !apiKey) return res.status(503).json({ error: "Replit AI integration not configured." });
     endpoint = `${baseUrl}/chat/completions`;
     reqHeaders["Authorization"] = `Bearer ${apiKey}`;
     model = model || "gpt-5.2";
   } else if (genProvider === "openrouter") {
     const key = sett["openrouter_api_key_1"] ?? "";
-    if (!key) return res.status(503).json({ error: "OpenRouter API Key 1 not set. Go to 🔀 OpenRouter settings." });
+    if (!key) return res.status(503).json({ error: "OpenRouter API Key not set." });
     endpoint = "https://openrouter.ai/api/v1/chat/completions";
     reqHeaders["Authorization"] = `Bearer ${key}`;
-    reqHeaders["HTTP-Referer"]  = "https://newscard.pro";
+    reqHeaders["HTTP-Referer"] = "https://newscard.pro";
     model = model || "openai/gpt-4o";
   } else if (genProvider === "openai") {
     const key = sett["openai_api_key"] ?? "";
-    if (!key) return res.status(503).json({ error: "OpenAI API key not set. Go to OpenAI settings." });
+    if (!key) return res.status(503).json({ error: "OpenAI API key not set." });
     endpoint = "https://api.openai.com/v1/chat/completions";
     reqHeaders["Authorization"] = `Bearer ${key}`;
     model = model || "gpt-4o";
   } else {
-    // Custom providers: custom, custom_2, custom_3
-    const slot   = genProvider === "custom" ? 1 : genProvider === "custom_2" ? 2 : 3;
+    const slot = genProvider === "custom" ? 1 : genProvider === "custom_2" ? 2 : 3;
     const prefix = slot === 1 ? "custom_1" : `custom_${slot}`;
-    const key    = sett[`${prefix}_key`]      ?? "";
-    const base   = sett[`${prefix}_base_url`] ?? "";
-    if (!base) return res.status(503).json({ error: `Custom AI provider ${slot} base URL not set. Go to 🔧 Custom AI settings.` });
+    const key  = sett[`${prefix}_key`] ?? "";
+    const base = sett[`${prefix}_base_url`] ?? "";
+    if (!base) return res.status(503).json({ error: `Custom AI base URL not set.` });
     endpoint = `${base.replace(/\/$/, "")}/chat/completions`;
     if (key) reqHeaders["Authorization"] = `Bearer ${key}`;
     model = model || sett[`${prefix}_model_main`] || "llama3";
@@ -425,100 +416,294 @@ router.post("/ai-generate-template", requireAdmin, async (req, res) => {
   if (!endpoint) return res.status(503).json({ error: "AI provider not configured." });
 
   const systemPrompt = `You are a professional news card template designer. Generate a canvas layout JSON for a 540×540px news card template.
-
-Canvas element types and their key properties:
-- bg: background layer (fill: hex color, gradient: CSS gradient string, src: image URL)
-- photo: main photo slot placeholder (positioned where journalist's photo or news image will be placed)
-- text: text element (content: string, fontSize: number, color: hex, fontFamily: "Inter"|"Cairo"|"Georgia", fontWeight: "400"|"700"|"800"|"900", textAlign: "left"|"center"|"right")
-- badge: pill/chip badge (content: string, bgColor: hex, color: hex, fontSize: number, borderRadius: number)
-- rect: filled rectangle (fill: hex, gradient: CSS gradient, borderRadius: number, borderWidth: number, borderColor: hex)
-- circle: filled circle (fill: hex, borderWidth: number, borderColor: hex)
-- logo: small logo placeholder box
-- social: social media bar placeholder
-
-Every element MUST have: { id: string, type: string, x: number, y: number, w: number, h: number, zIndex: number }
-
-Design rules:
-1. Canvas is exactly 540×540px. x/y origin is top-left corner.
-2. ALWAYS include a "bg" element covering full canvas (x:0, y:0, w:540, h:540, zIndex:0)
-3. ALWAYS include a "photo" element for the main image area
-4. ALWAYS include at least 2 "text" elements: one small label/category (fontSize 11-13) and one bold headline (fontSize 18-28)
-5. zIndex: bg=0, photo=1, shapes=2, overlays=3, text=4, badges=5
-6. All coordinates must be within 0-540 range
-7. Create modern, professional, visually striking layouts
-8. Use cohesive color palettes
-
-Return ONLY a valid JSON object, no markdown, no explanation:
-{ "width": 540, "height": 540, "elements": [...] }`;
+Canvas element types: bg, photo, text, badge, rect, circle, logo, social.
+Every element MUST have: { id, type, x, y, w, h, zIndex }
+Return ONLY valid JSON: { "width": 540, "height": 540, "elements": [...] }`;
 
   const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+  if (imageBase64 && imageMimeType) userContent.push({ type: "image_url", image_url: { url: `data:${imageMimeType};base64,${imageBase64}` } });
+  userContent.push({ type: "text", text: description?.trim() || "Create a modern news card template." });
 
-  if (imageBase64 && imageMimeType) {
-    userContent.push({
-      type: "image_url",
-      image_url: { url: `data:${imageMimeType};base64,${imageBase64}` },
-    });
-  }
-
-  userContent.push({
-    type: "text",
-    text: description && description.trim()
-      ? description.trim()
-      : "Create a modern, creative news card template with a bold headline area, clear photo space, and professional color scheme.",
-  });
-
-  // Some providers don't support response_format — only set it for OpenAI-compatible ones
   const supportsJsonMode = ["replit_openai", "openai"].includes(genProvider);
-
   try {
     const aiRes = await fetch(endpoint, {
-      method: "POST",
-      headers: reqHeaders,
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user",   content: userContent },
-        ],
-        max_completion_tokens: 4096,
-        ...(supportsJsonMode ? { response_format: { type: "json_object" } } : {}),
-      }),
+      method: "POST", headers: reqHeaders,
+      body: JSON.stringify({ model, messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userContent }], max_completion_tokens: 4096, ...(supportsJsonMode ? { response_format: { type: "json_object" } } : {}) }),
     });
-
-    if (!aiRes.ok) {
-      const text = await aiRes.text();
-      return res.status(502).json({ error: `AI API error ${aiRes.status}: ${text.slice(0, 300)}` });
-    }
-
+    if (!aiRes.ok) { const text = await aiRes.text(); return res.status(502).json({ error: `AI API error ${aiRes.status}: ${text.slice(0, 300)}` }); }
     const data = await aiRes.json() as { choices?: Array<{ message?: { content?: string } }> };
     const content = data.choices?.[0]?.message?.content;
     if (!content) return res.status(502).json({ error: "Empty response from AI" });
-
     let layout: unknown;
-    try { layout = JSON.parse(content); } catch {
-      return res.status(502).json({ error: "AI returned invalid JSON" });
-    }
-
+    try { layout = JSON.parse(content); } catch { return res.status(502).json({ error: "AI returned invalid JSON" }); }
     return res.json({ layout });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return res.status(500).json({ error: msg });
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
   }
 });
 
-// GET /admin/payments — stub (no payment table yet)
-router.get("/payments", requireAdmin, async (_req, res) => {
-  return res.json({ requests: [] });
+// ── GET /admin/payments ──────────────────────────────────────────────────────
+router.get("/payments", requireAdmin, async (req, res) => {
+  try {
+    const { status } = req.query as { status?: string };
+    const rows = await db
+      .select({
+        id:            paymentRequestsTable.id,
+        userId:        paymentRequestsTable.userId,
+        type:          paymentRequestsTable.type,
+        planId:        paymentRequestsTable.planId,
+        pointsAmount:  paymentRequestsTable.pointsAmount,
+        paymentMethod: paymentRequestsTable.paymentMethod,
+        proofDetails:  paymentRequestsTable.proofDetails,
+        status:        paymentRequestsTable.status,
+        adminNotes:    paymentRequestsTable.adminNotes,
+        createdAt:     paymentRequestsTable.createdAt,
+        updatedAt:     paymentRequestsTable.updatedAt,
+        userName:      usersTable.name,
+        userEmail:     usersTable.email,
+        userPlan:      usersTable.plan,
+        planName:      plansTable.name,
+        planSlug:      plansTable.slug,
+      })
+      .from(paymentRequestsTable)
+      .leftJoin(usersTable, eq(paymentRequestsTable.userId, usersTable.id))
+      .leftJoin(plansTable, eq(paymentRequestsTable.planId, plansTable.id))
+      .where(status ? eq(paymentRequestsTable.status, status) : undefined)
+      .orderBy(desc(paymentRequestsTable.createdAt));
+    return res.json({ requests: rows });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
-// POST /admin/payments/:id/approve — stub
-router.post("/payments/:id/approve", requireAdmin, async (_req, res) => {
+// ── GET /admin/addons ── list all addons with subscriber count ────────────────
+router.get("/addons", requireAdmin, async (_req, res) => {
+  const addons = await db.select().from(planAddonsTable).orderBy(planAddonsTable.id);
+  const counts = await db
+    .select({ addonId: userAddonsTable.addonId, cnt: count() })
+    .from(userAddonsTable)
+    .where(eq(userAddonsTable.isActive, true))
+    .groupBy(userAddonsTable.addonId);
+  const cntMap = Object.fromEntries(counts.map(c => [c.addonId, Number(c.cnt)]));
+  return res.json({ addons: addons.map(a => ({ ...a, subscriber_count: cntMap[a.id] ?? 0 })) });
+});
+
+// ── POST /admin/addons ── create addon ────────────────────────────────────────
+router.post("/addons", requireAdmin, async (req, res) => {
+  const body = req.body as any;
+  const [row] = await db.insert(planAddonsTable).values({
+    name: body.name,
+    slug: body.slug,
+    type: body.type,
+    credits_amount: body.credits_amount ?? 0,
+    feature_key: body.feature_key ?? null,
+    limit_key: body.limit_key ?? null,
+    limit_value: body.limit_value ?? null,
+    price: body.price ?? 0,
+    is_recurring: body.is_recurring ?? false,
+    is_active: body.is_active ?? true,
+  }).returning();
+  return res.status(201).json(row);
+});
+
+// ── PUT /admin/addons/:id ── update addon ─────────────────────────────────────
+router.put("/addons/:id", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const body = req.body as any;
+  const updates: Record<string, any> = {};
+  if (body.name !== undefined)          updates.name = body.name;
+  if (body.slug !== undefined)          updates.slug = body.slug;
+  if (body.type !== undefined)          updates.type = body.type;
+  if (body.credits_amount !== undefined) updates.credits_amount = body.credits_amount;
+  if (body.feature_key !== undefined)   updates.feature_key = body.feature_key;
+  if (body.limit_key !== undefined)     updates.limit_key = body.limit_key;
+  if (body.limit_value !== undefined)   updates.limit_value = body.limit_value;
+  if (body.price !== undefined)         updates.price = body.price;
+  if (body.is_recurring !== undefined)  updates.is_recurring = body.is_recurring;
+  if (body.is_active !== undefined)     updates.is_active = body.is_active;
+  const [row] = await db.update(planAddonsTable).set(updates).where(eq(planAddonsTable.id, id)).returning();
+  if (!row) return res.status(404).json({ error: "Addon not found" });
+  return res.json(row);
+});
+
+// ── DELETE /admin/addons/:id ── deactivate addon ──────────────────────────────
+router.delete("/addons/:id", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const [row] = await db.update(planAddonsTable).set({ is_active: false }).where(eq(planAddonsTable.id, id)).returning();
+  if (!row) return res.status(404).json({ error: "Addon not found" });
+  return res.json({ success: true, addon: row });
+});
+
+// ── GET /admin/addons/:id/subscribers ── who has this addon ───────────────────
+router.get("/addons/:id/subscribers", requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const rows = await db
+    .select({
+      userAddonId: userAddonsTable.id,
+      userId: userAddonsTable.userId,
+      purchasedAt: userAddonsTable.purchasedAt,
+      expiresAt: userAddonsTable.expiresAt,
+      isActive: userAddonsTable.isActive,
+      userName: usersTable.name,
+      userEmail: usersTable.email,
+      userPlan: usersTable.plan,
+    })
+    .from(userAddonsTable)
+    .innerJoin(usersTable, eq(userAddonsTable.userId, usersTable.id))
+    .where(eq(userAddonsTable.addonId, id))
+    .orderBy(desc(userAddonsTable.purchasedAt));
+  return res.json({ subscribers: rows });
+});
+
+// ── POST /admin/users/:userId/addons ── grant addon to user ──────────────────
+router.post("/users/:userId/addons", requireAdmin, async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  const { addonId, expiresAt } = req.body as { addonId: number; expiresAt?: string };
+  if (!addonId) return res.status(400).json({ error: "addonId is required" });
+
+  const [addon] = await db.select().from(planAddonsTable).where(eq(planAddonsTable.id, addonId)).limit(1);
+  if (!addon) return res.status(404).json({ error: "Addon not found" });
+
+  // Deactivate any existing instance first
+  await db.update(userAddonsTable).set({ isActive: false })
+    .where(and(eq(userAddonsTable.userId, userId), eq(userAddonsTable.addonId, addonId)));
+
+  const [row] = await db.insert(userAddonsTable).values({
+    userId,
+    addonId,
+    expiresAt: expiresAt ? new Date(expiresAt) : null,
+    isActive: true,
+  }).returning();
+
+  // Apply credits immediately for credit-type addons
+  if (addon.type === "credits" && addon.credits_amount && addon.credits_amount > 0) {
+    const [user] = await db.select({ purchased_credits: usersTable.purchased_credits }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (user) {
+      await db.update(usersTable).set({ purchased_credits: (user.purchased_credits ?? 0) + addon.credits_amount }).where(eq(usersTable.id, userId));
+      await db.insert(creditTransactionsTable).values({
+        userId, type: "image_generator", delta: addon.credits_amount,
+        note: `Addon granted: ${addon.name}`,
+      } as any);
+    }
+  }
+
+  invalidateEffectiveLimitsCache(userId);
+  return res.status(201).json(row);
+});
+
+// ── DELETE /admin/users/:userId/addons/:addonId ── revoke addon ───────────────
+router.delete("/users/:userId/addons/:addonId", requireAdmin, async (req, res) => {
+  const userId = parseInt(req.params.userId, 10);
+  const addonId = parseInt(req.params.addonId, 10);
+
+  await db.update(userAddonsTable).set({ isActive: false })
+    .where(and(eq(userAddonsTable.userId, userId), eq(userAddonsTable.addonId, addonId), eq(userAddonsTable.isActive, true)));
+
+  invalidateEffectiveLimitsCache(userId);
   return res.json({ success: true });
 });
 
-// POST /admin/payments/:id/deny — stub
-router.post("/payments/:id/deny", requireAdmin, async (_req, res) => {
-  return res.json({ success: true });
+// ── POST /admin/payments/:id/approve ────────────────────────────────────────
+router.post("/payments/:id/approve", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const { adminNotes } = req.body as { adminNotes?: string };
+
+    const [request] = await db
+      .select().from(paymentRequestsTable)
+      .where(eq(paymentRequestsTable.id, id))
+      .limit(1);
+    if (!request) return res.status(404).json({ error: "Payment request not found" });
+    if (request.status !== "pending") return res.status(400).json({ error: "Request is not pending" });
+
+    if (request.type === "plan_upgrade" && request.planId) {
+      const [plan] = await db
+        .select().from(plansTable)
+        .where(eq(plansTable.id, request.planId))
+        .limit(1);
+      if (plan) {
+        await db.update(usersTable).set({
+          plan: plan.slug,
+          monthly_credits: plan.monthly_credits,
+        }).where(eq(usersTable.id, request.userId));
+      }
+    } else if (request.type === "points_purchase" && request.pointsAmount) {
+      const [user] = await db
+        .select({ purchased_credits: usersTable.purchased_credits })
+        .from(usersTable)
+        .where(eq(usersTable.id, request.userId))
+        .limit(1);
+      if (user) {
+        await db.update(usersTable).set({
+          purchased_credits: (user.purchased_credits ?? 0) + request.pointsAmount,
+        }).where(eq(usersTable.id, request.userId));
+      }
+    } else if (request.type === "addon_purchase" && (request as any).addonId) {
+      const addonId = (request as any).addonId as number;
+      const [addon] = await db.select().from(planAddonsTable).where(eq(planAddonsTable.id, addonId)).limit(1);
+      if (addon) {
+        // Deactivate any prior instance
+        await db.update(userAddonsTable).set({ isActive: false })
+          .where(and(eq(userAddonsTable.userId, request.userId), eq(userAddonsTable.addonId, addonId)));
+
+        // Insert active addon
+        await db.insert(userAddonsTable).values({
+          userId: request.userId,
+          addonId,
+          expiresAt: addon.is_recurring ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
+          isActive: true,
+        });
+
+        // Apply effect immediately for credits type
+        if (addon.type === "credits" && addon.credits_amount && addon.credits_amount > 0) {
+          const [user] = await db.select({ purchased_credits: usersTable.purchased_credits }).from(usersTable).where(eq(usersTable.id, request.userId)).limit(1);
+          if (user) {
+            await db.update(usersTable).set({ purchased_credits: (user.purchased_credits ?? 0) + addon.credits_amount }).where(eq(usersTable.id, request.userId));
+            await db.insert(creditTransactionsTable).values({
+              userId: request.userId, type: "image_generator", delta: addon.credits_amount,
+              note: `Addon purchased: ${addon.name}`,
+            } as any);
+          }
+        }
+
+        invalidateEffectiveLimitsCache(request.userId);
+      }
+    }
+
+    const [updated] = await db.update(paymentRequestsTable).set({
+      status: "approved",
+      adminNotes: adminNotes ?? null,
+      updatedAt: new Date(),
+    }).where(eq(paymentRequestsTable.id, id)).returning();
+
+    return res.json({ success: true, request: updated });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ── POST /admin/payments/:id/deny ────────────────────────────────────────────
+router.post("/payments/:id/deny", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const { adminNotes } = req.body as { adminNotes?: string };
+
+    const [request] = await db
+      .select().from(paymentRequestsTable)
+      .where(eq(paymentRequestsTable.id, id))
+      .limit(1);
+    if (!request) return res.status(404).json({ error: "Payment request not found" });
+
+    const [updated] = await db.update(paymentRequestsTable).set({
+      status: "rejected",
+      adminNotes: adminNotes ?? null,
+      updatedAt: new Date(),
+    }).where(eq(paymentRequestsTable.id, id)).returning();
+
+    return res.json({ success: true, request: updated });
+  } catch (err: unknown) {
+    return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
 });
 
 export default router;

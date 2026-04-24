@@ -1,54 +1,54 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subscriptionsTable, plansTable, pointsWalletTable, usersTable } from "@workspace/db";
+import { subscriptionsTable, plansTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { getEffectiveLimits } from "../lib/planGuard";
 
 const router = Router();
 
-// GET /api/billing/status
 router.get("/status", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
 
   const [planRow] = await db.select().from(plansTable).where(eq(plansTable.slug, user.plan)).limit(1);
-
-  const [wallet] = await db.select().from(pointsWalletTable).where(eq(pointsWalletTable.userId, user.id)).limit(1);
-  const pointsBalance = wallet?.balance ?? 0;
-
   const [sub] = await db.select().from(subscriptionsTable).where(eq(subscriptionsTable.userId, user.id)).limit(1);
 
-  const plan = planRow ?? {
-    id: 0, name: "Free", slug: "free", priceMonthly: 0, priceYearly: 0,
-    cardsPerDay: 5, maxTemplates: 3, maxSavedDesigns: 5, maxSites: 1,
-    articlesPerMonth: 0, hasTelegramBot: false, hasBlogAutomation: false,
-    hasImageGenerator: true, apiAccess: false, telegramBot: false,
-    overlayUpload: false, customWatermark: false, credits: 0,
-    isActive: true, sortOrder: 0, createdAt: new Date(),
-  };
-
-  const articlesUsed = sub?.articlesUsedThisPeriod ?? user.articlesThisMonth ?? 0;
-  const articlesMax = plan.articlesPerMonth ?? 0;
+  const plan = planRow ?? null;
   const sitesUsed = sub?.sitesUsed ?? 0;
-  const sitesMax = plan.maxSites ?? 1;
+
+  // Use getEffectiveLimits — the single source of truth for plan + addon overrides
+  const effective = await getEffectiveLimits(user.id);
+  const effectiveMaxSites = effective?.max_sites ?? plan?.max_sites ?? 1;
+  const effectiveRateLimit = effective?.rate_limit_daily ?? plan?.rate_limit_daily ?? 50;
 
   const pct = (used: number, max: number) => (max === 0 ? 0 : Math.round((used / max) * 100));
 
   return res.json({
-    plan: {
+    plan: plan ? {
       id: plan.id,
       name: plan.slug,
       displayName: plan.name,
-      priceMonthly: plan.priceMonthly,
-      priceYearly: plan.priceYearly,
-      cardsPerDay: plan.cardsPerDay,
-      maxSites: sitesMax,
-      articlesPerMonth: articlesMax,
-      hasTelegramBot: plan.hasTelegramBot,
-      hasBlogAutomation: plan.hasBlogAutomation,
-      hasImageGenerator: plan.hasImageGenerator,
-      apiAccess: plan.apiAccess,
-      overlayUpload: plan.overlayUpload,
-      customWatermark: plan.customWatermark,
+      price_monthly: plan.price_monthly,
+      price_yearly: plan.price_yearly,
+      monthly_credits: plan.monthly_credits,
+      // raw plan limits
+      max_sites: plan.max_sites,
+      has_telegram_bot: plan.has_telegram_bot,
+      has_blog_automation: plan.has_blog_automation,
+      has_image_generator: plan.has_image_generator,
+      has_api_access: plan.has_api_access,
+      has_overlay_upload: plan.has_overlay_upload,
+      has_custom_watermark: plan.has_custom_watermark,
+      has_ai_image_generation: plan.has_ai_image_generation,
+      rate_limit_daily: plan.rate_limit_daily,
+    } : null,
+    // effective = plan + addons merged — use this for UI display and enforcement
+    effective: {
+      max_sites: effectiveMaxSites,
+      max_templates: effective?.max_templates ?? plan?.max_templates ?? null,
+      max_saved_designs: effective?.max_saved_designs ?? plan?.max_saved_designs ?? null,
+      rate_limit_daily: effectiveRateLimit,
+      ...(effective?.features ?? {}),
     },
     subscription: sub ? {
       id: sub.id,
@@ -58,35 +58,26 @@ router.get("/status", requireAuth, async (req, res) => {
       cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
     } : null,
     usage: {
-      articles: {
-        used: articlesUsed,
-        max: articlesMax,
-        unlimited: articlesMax === 0,
-        percentage: articlesMax === 0 ? 0 : pct(articlesUsed, articlesMax),
+      credits: {
+        monthly: user.monthly_credits ?? 0,
+        purchased: user.purchased_credits ?? 0,
+        total: (user.monthly_credits ?? 0) + (user.purchased_credits ?? 0),
+        reset_date: user.credits_reset_date,
+        daily_usage: user.daily_usage_count ?? 0,
+        daily_limit: effectiveRateLimit,
       },
       sites: {
         used: sitesUsed,
-        max: sitesMax,
-        unlimited: sitesMax >= 999,
-        percentage: sitesMax >= 999 ? 0 : pct(sitesUsed, sitesMax),
-      },
-      cards: {
-        used: user.imagesToday ?? 0,
-        max: plan.cardsPerDay,
-        unlimited: plan.cardsPerDay >= 999,
-        percentage: plan.cardsPerDay >= 999 ? 0 : pct(user.imagesToday ?? 0, plan.cardsPerDay),
-      },
-      credits: {
-        balance: user.credits ?? 0,
-        points: pointsBalance,
+        max: effectiveMaxSites,
+        unlimited: effectiveMaxSites >= 999,
+        percentage: effectiveMaxSites >= 999 ? 0 : pct(sitesUsed, effectiveMaxSites),
       },
     },
   });
 });
 
-// GET /api/billing/plans
 router.get("/plans", async (_req, res) => {
-  const plans = await db.select().from(plansTable).where(eq(plansTable.isActive, true));
+  const plans = await db.select().from(plansTable).where(eq(plansTable.is_active, true));
   return res.json({ plans });
 });
 

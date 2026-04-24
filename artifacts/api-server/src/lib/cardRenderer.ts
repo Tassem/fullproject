@@ -23,32 +23,28 @@ function ensureFonts() {
   if (fontsRegistered) return;
   fontsRegistered = true;
   const fontsDir = path.join(__dirname, "fonts");
-  const register = (file: string, family: string) => {
-    try {
-      const p = path.join(fontsDir, file);
-      if (fs.existsSync(p)) {
-        GlobalFonts.registerFromPath(p, family);
-        console.log(`[FONTS] Registered ${file} as ${family}`);
-      } else {
-        console.warn(`[FONTS] Font file NOT FOUND: ${p}`);
-      }
-    } catch (e) {
-      console.error(`[FONTS] Failed to register ${file}:`, e);
+  if (!fs.existsSync(fontsDir)) {
+    console.warn(`[FONTS] Fonts directory not found: ${fontsDir}`);
+    return;
+  }
+  try {
+    // Load all TTF files via their embedded family metadata (most reliable)
+    GlobalFonts.loadFontsFromDir(fontsDir);
+    // Register Cairo explicitly from buffer so it's accessible as "Cairo"
+    const cairoPath = path.join(fontsDir, "Cairo.ttf");
+    if (fs.existsSync(cairoPath)) {
+      GlobalFonts.register(fs.readFileSync(cairoPath), "Cairo");
     }
-  };
-  // Cairo (main Arabic/Latin font)
-  register("Cairo.ttf", "Cairo");
-  // Noto Kufi Arabic (used in custom templates)
-  register("NotoKufiArabic-Regular.ttf", "Noto Kufi Arabic");
-  register("NotoKufiArabic-Bold.ttf",    "Noto Kufi Arabic");
-  register("NotoKufiArabic-Regular.ttf", "KufiArabic");
-  register("NotoKufiArabic-Bold.ttf",    "KufiArabic");
-  // Noto Sans Arabic (clean modern alternative)
-  register("NotoSansArabic-Regular.ttf", "Noto Sans Arabic");
-  register("NotoSansArabic-Bold.ttf",    "Noto Sans Arabic");
-  // Inter (used in some template text elements and as fallback for punctuation)
-  register("Inter-Regular.ttf", "Inter");
-  register("Inter-Bold.ttf",    "Inter");
+    // Register aliases so template fontFamily values always resolve
+    GlobalFonts.setAlias("KufiArabic",        "Noto Kufi Arabic");
+    GlobalFonts.setAlias("NotoKufiArabic",    "Noto Kufi Arabic");
+    GlobalFonts.setAlias("NotoSansArabic",    "Noto Sans Arabic");
+    GlobalFonts.setAlias("IBM Plex Arabic",   "IBM Plex Sans Arabic");
+    GlobalFonts.setAlias("IBMPlexArabic",     "IBM Plex Sans Arabic");
+    console.log("[FONTS] Registered:", GlobalFonts.families.map((f: { family: string }) => f.family).join(", "));
+  } catch (e) {
+    console.error("[FONTS] Registration failed:", e);
+  }
 }
 
 // ── Template definitions — mirrors TEMPLATES array in generate.tsx EXACTLY ───
@@ -181,7 +177,7 @@ export interface CanvasLayout {
 // Handles: photo (user bg), bg (overlay PNG), text (headline/fixed), rect, circle, badge, social
 export async function renderFromCanvasLayout(
   layout: CanvasLayout,
-  userTitle: string,
+  userTitle: string | null,
   userPhotoBuffer: Buffer | null,
   exportW: number,
   exportH: number,
@@ -211,7 +207,16 @@ export async function renderFromCanvasLayout(
     switch (el.type) {
       // ── Photo: draw user's background image ─────────────────────────────
       case "photo": {
-        const buf = userPhotoBuffer;
+        // 1. Use passed-in buffer (standard generate flow)
+        // 2. Fallback: load from el.src server path (builder flow)
+        let buf = userPhotoBuffer;
+        if (!buf && el.src) {
+          try {
+            const filename = el.src.replace(/^.*[/\\]/, "");
+            const imgPath = path.join(uploadsDir, filename);
+            if (fs.existsSync(imgPath)) buf = fs.readFileSync(imgPath);
+          } catch { /* skip */ }
+        }
         if (buf) {
           try {
             const img = await loadImage(buf);
@@ -245,6 +250,8 @@ export async function renderFromCanvasLayout(
 
       // ── Bg: overlay PNG or solid fill ───────────────────────────────────
       case "bg": {
+        ctx.save();
+        if (el.opacity !== undefined && el.opacity !== 1) ctx.globalAlpha = el.opacity;
         if (el.src) {
           // Load overlay PNG from uploads directory
           try {
@@ -278,6 +285,7 @@ export async function renderFromCanvasLayout(
           ctx.fillStyle = el.fill;
           ctx.fillRect(ex, ey, ew, eh);
         }
+        ctx.restore();
         break;
       }
 
@@ -321,12 +329,34 @@ export async function renderFromCanvasLayout(
       // ── Circle ──────────────────────────────────────────────────────────
       case "circle": {
         ctx.save();
+        if (el.opacity !== undefined && el.opacity !== 1) ctx.globalAlpha = el.opacity;
         ctx.fillStyle = el.fill || "rgba(0,0,0,0.5)";
         const cx2 = ex + ew / 2;
         const cy2 = ey + eh / 2;
         const r2 = Math.min(ew, eh) / 2;
         ctx.beginPath();
         ctx.arc(cx2, cy2, r2, 0, Math.PI * 2);
+        ctx.fill();
+        if (el.borderWidth && el.borderColor) {
+          ctx.strokeStyle = el.borderColor;
+          ctx.lineWidth = Math.round(el.borderWidth * scale);
+          ctx.beginPath();
+          ctx.arc(cx2, cy2, r2 - ctx.lineWidth / 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+        break;
+      }
+
+      // ── Line: horizontal divider ─────────────────────────────────────────
+      case "line": {
+        ctx.save();
+        if (el.opacity !== undefined && el.opacity !== 1) ctx.globalAlpha = el.opacity;
+        const lineThick = Math.max(1, Math.round((el.borderWidth ?? 2) * scale));
+        const lineY = ey + Math.round(eh / 2) - Math.round(lineThick / 2);
+        ctx.fillStyle = el.fill || "#ffffff";
+        ctx.beginPath();
+        ctx.roundRect(ex, lineY, ew, lineThick, lineThick / 2);
         ctx.fill();
         ctx.restore();
         break;
@@ -335,7 +365,9 @@ export async function renderFromCanvasLayout(
       // ── Text: fixed or headline ──────────────────────────────────────────
       case "text": {
         const isHeadline = el.id === "headline" || el.id === "headline_text" || el.id?.includes("headline");
-        const rawContent = isHeadline ? userTitle : (el.content || "");
+        // Use userTitle for headline when provided (standard generate flow)
+        // Otherwise use el.content directly (builder/template-export flow)
+        const rawContent = (isHeadline && userTitle) ? userTitle : (el.content || "");
         if (!rawContent.trim()) break;
 
         ctx.save();
@@ -344,20 +376,18 @@ export async function renderFromCanvasLayout(
         const family = el.fontFamily || "Cairo";
         const weight = el.fontWeight || 700;
         const fsize = Math.round((el.fontSize || 16) * scale);
-        // Put Inter first to handle punctuation/signs, then the requested font for Arabic
-        ctx.font = `${weight} ${fsize}px "Inter", "${family}", "Cairo", sans-serif`;
         ctx.fillStyle = el.color || "#ffffff";
         ctx.textBaseline = "top";
 
         // Auto-detect text direction: Arabic fonts/content → RTL, Latin → LTR
-        const isArabicFont = /arabic|kufi|noto|cairo/i.test(family);
+        const isArabicFont = /arabic|kufi|noto|cairo|tajawal|amiri|reem/i.test(family);
         const isArabicText = /[\u0600-\u06FF]/.test(rawContent);
         const isRTL = isArabicFont || isArabicText;
         ctx.direction = isRTL ? "rtl" : "ltr";
 
         const lineH = fsize * (el.lineHeight || 1.45);
-        // Fallback chain for text: Inter (symbols) -> requested family -> KufiArabic -> Cairo -> sans-serif
-        ctx.font = `${weight} ${fsize}px "Inter", "${family}", "KufiArabic", "Noto Sans Arabic", "Cairo", sans-serif`;
+        // User-selected font FIRST, then fallbacks for missing glyphs
+        ctx.font = `${weight} ${fsize}px "${family}", "Cairo", "Noto Kufi Arabic", "Noto Sans Arabic", "Inter", sans-serif`;
         const lines = wrapText(ctx, rawContent, ew);
 
         // Total text height for vertical centering within the element box
@@ -391,7 +421,8 @@ export async function renderFromCanvasLayout(
         ctx.fill();
 
         const bf = Math.round((el.fontSize || 12) * scale);
-        ctx.font = `bold ${bf}px "Cairo", sans-serif`;
+        const bfFamily = el.fontFamily || "Cairo";
+        ctx.font = `bold ${bf}px "${bfFamily}", "Cairo", "Noto Kufi Arabic", sans-serif`;
         ctx.fillStyle = el.color || "#ffffff";
         ctx.direction = "rtl";
         ctx.textBaseline = "middle";
@@ -400,27 +431,33 @@ export async function renderFromCanvasLayout(
         break;
       }
 
-      // ── Social: row of social media icon circles ─────────────────────────
+      // ── Social: single social platform icon ──────────────────────────────
       case "social": {
         ctx.save();
-        const iconSize = Math.round(eh * 0.75);
-        const iconGap = Math.round(iconSize * 0.4);
-        const icons = ["f", "IG", "▶", "🎵", "TT", "🌐"];
-        let ix = ex;
-        for (const icon of icons) {
-          const r4 = iconSize / 2;
-          ctx.fillStyle = "rgba(255,255,255,0.25)";
-          ctx.beginPath();
-          ctx.arc(ix + r4, ey + eh / 2, r4, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "#ffffff";
-          ctx.font = `bold ${Math.round(iconSize * 0.45)}px sans-serif`;
-          ctx.textBaseline = "middle";
-          ctx.textAlign = "center";
-          ctx.fillText(icon.slice(0, 2), ix + r4, ey + eh / 2);
-          ix += iconSize + iconGap;
-          if (ix + iconSize > ex + ew) break;
-        }
+        if (el.opacity !== undefined && el.opacity !== 1) ctx.globalAlpha = el.opacity;
+        const SOCIAL_MAP: Record<string, { bg: string; glyph: string }> = {
+          twitter:   { bg: "#000000", glyph: "𝕏" },
+          instagram: { bg: "#E1306C", glyph: "📷" },
+          facebook:  { bg: "#1877F2", glyph: "f" },
+          youtube:   { bg: "#FF0000", glyph: "▶" },
+          tiktok:    { bg: "#010101", glyph: "♪" },
+          whatsapp:  { bg: "#25D366", glyph: "✆" },
+          telegram:  { bg: "#229ED9", glyph: "✈" },
+          snapchat:  { bg: "#FFFC00", glyph: "👻" },
+        };
+        const plat = SOCIAL_MAP[el.platform || ""] || { bg: "#333", glyph: "?" };
+        const bg  = el.fill || plat.bg;
+        const r5  = Math.round((el.borderRadius ?? 10) * scale);
+        ctx.fillStyle = bg;
+        roundRect(ctx, ex, ey, ew, eh, r5);
+        ctx.fill();
+        const gSize = Math.round(Math.min(ew, eh) * 0.52);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `bold ${gSize}px "Cairo", "Noto Kufi Arabic", sans-serif`;
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+        ctx.direction = "ltr";
+        ctx.fillText(plat.glyph.slice(0, 2), ex + ew / 2, ey + eh / 2);
         ctx.restore();
         break;
       }

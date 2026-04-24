@@ -1,5 +1,29 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { db } from "@workspace/db";
+import { userAddonsTable } from "@workspace/db";
+import { and, eq, lt, isNotNull } from "drizzle-orm";
+
+/** Deactivate expired user addons (runs every hour). */
+async function deactivateExpiredAddons() {
+  try {
+    const now = new Date();
+    const result = await db
+      .update(userAddonsTable)
+      .set({ isActive: false })
+      .where(
+        and(
+          eq(userAddonsTable.isActive, true),
+          isNotNull(userAddonsTable.expiresAt),
+          lt(userAddonsTable.expiresAt, now)
+        )
+      );
+    const count = (result as any).rowCount ?? 0;
+    if (count > 0) logger.info({ count }, "Deactivated expired addons");
+  } catch (err) {
+    logger.error({ err }, "Failed to deactivate expired addons");
+  }
+}
 
 const rawPort = process.env["PORT"];
 
@@ -22,4 +46,8 @@ app.listen(port, (err) => {
   }
 
   logger.info({ port }, "Server listening");
+
+  // Run expiration cleanup immediately, then every hour
+  deactivateExpiredAddons();
+  setInterval(deactivateExpiredAddons, 60 * 60 * 1000);
 });

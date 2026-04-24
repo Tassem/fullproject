@@ -257,12 +257,12 @@ function formatAccountMessage(
   plan: typeof plansTable.$inferSelect | null,
 ): string {
   const planName = plan?.name ?? user.plan;
-  const cardsDay = plan?.cardsPerDay ?? 5;
-  const cardsUsed = user.imagesToday ?? 0;
-  const cardsLeft = Math.max(0, cardsDay - cardsUsed);
-  const articlesUsed = user.articlesThisMonth ?? 0;
-  const articlesMonth = plan?.articlesPerMonth ?? 0;
-  const creditsLeft = user.credits ?? 0;
+  const dailyUsed = user.daily_usage_count ?? 0;
+  const dailyLimit = plan?.rate_limit_daily ?? 50;
+  const dailyLeft = Math.max(0, dailyLimit - dailyUsed);
+  const monthly = user.monthly_credits ?? 0;
+  const purchased = user.purchased_credits ?? 0;
+  const totalCredits = monthly + purchased;
 
   return `👤 <b>Account Information</b>
 
@@ -271,10 +271,9 @@ function formatAccountMessage(
 🔑 Bot Code: <code>${user.botCode}</code>
 
 📦 <b>Plan:</b> ${planName}
-🎴 Cards today: ${cardsUsed}/${cardsDay} (${cardsLeft} remaining)
-📝 Articles this month: ${articlesUsed}/${articlesMonth === 0 ? "∞" : articlesMonth}
-💎 Credits: ${creditsLeft}
-${plan?.hasBlogAutomation ? "✅ Blog Automation: Active\n" : ""}${plan?.hasTelegramBot ? "✅ Telegram Bot: Active" : ""}
+📊 Today's usage: ${dailyUsed}/${dailyLimit} (${dailyLeft} remaining)
+💎 Credits: ${totalCredits} (monthly: ${monthly} + purchased: ${purchased})
+${plan?.has_blog_automation ? "✅ Blog Automation: Active\n" : ""}${plan?.has_telegram_bot ? "✅ Telegram Bot: Active" : ""}
 
 Use /help for available commands.`;
 }
@@ -496,11 +495,17 @@ To cancel, send a new card message.`);
       .where(eq(plansTable.slug, targetUser.plan))
       .limit(1);
 
-    // Check daily card limit
-    const cardsDay = plan?.cardsPerDay ?? 5;
-    const used = targetUser.imagesToday ?? 0;
-    if (cardsDay > 0 && used >= cardsDay) {
-      await sendMsg(`⚠️ <b>Daily Limit Reached</b>\n\nYou've used all ${cardsDay} cards today.\nLimit resets at midnight.\n\nUpgrade your plan for more cards.`);
+    // ── Plan enforcement: has_telegram_bot ──────────────────────────────────
+    if (plan && !plan.has_telegram_bot) {
+      await sendMsg(`🚫 <b>Telegram Bot Not Available</b>\n\nYour current plan (${plan.name}) does not include Telegram Bot access.\n\nPlease upgrade your plan at the platform to use this feature.`);
+      return;
+    }
+
+    // Check daily rate limit
+    const dailyLimit = plan?.rate_limit_daily ?? 50;
+    const dailyUsed = targetUser.daily_usage_count ?? 0;
+    if (dailyLimit > 0 && dailyUsed >= dailyLimit) {
+      await sendMsg(`⚠️ <b>Daily Limit Reached</b>\n\nYou've used all ${dailyLimit} operations today.\nLimit resets at midnight.\n\nUpgrade your plan for a higher limit.`);
       return;
     }
 
@@ -552,15 +557,17 @@ Now send a <b>background image</b>, or type /skip to generate without one.`);
     }
 
     if (text === "/cards") {
-      const cardsDay = plan?.cardsPerDay ?? 5;
-      const used = linkedUser.imagesToday ?? 0;
-      const left = Math.max(0, cardsDay - used);
-      await sendMsg(`🎴 <b>Cards Today</b>\n\nUsed: ${used}/${cardsDay}\nRemaining: <b>${left}</b>`);
+      const dailyLimit = plan?.rate_limit_daily ?? 50;
+      const dailyUsed = linkedUser.daily_usage_count ?? 0;
+      const left = Math.max(0, dailyLimit - dailyUsed);
+      await sendMsg(`📊 <b>Today's Usage</b>\n\nUsed: ${dailyUsed}/${dailyLimit}\nRemaining: <b>${left}</b>`);
       return;
     }
 
     if (text === "/credits") {
-      await sendMsg(`💎 <b>Credits Balance</b>\n\n${linkedUser.credits ?? 0} credits remaining`);
+      const monthly = linkedUser.monthly_credits ?? 0;
+      const purchased = linkedUser.purchased_credits ?? 0;
+      await sendMsg(`💎 <b>Credits Balance</b>\n\nMonthly: ${monthly}\nPurchased: ${purchased}\nTotal: <b>${monthly + purchased}</b>`);
       return;
     }
 
@@ -712,7 +719,7 @@ async function generateAndSend(
     savedId = saved.id;
     await db
       .update(usersTable)
-      .set({ imagesToday: (current.imagesToday ?? 0) + 1 })
+      .set({ daily_usage_count: (current.daily_usage_count ?? 0) + 1 })
       .where(eq(usersTable.id, session.userId));
   } catch (err) {
     console.error("Bot card save error:", err);
@@ -722,15 +729,17 @@ async function generateAndSend(
 
   const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, session.userId)).limit(1);
   const [plan] = await db.select().from(plansTable).where(eq(plansTable.slug, freshUser.plan)).limit(1);
-  const cardsDay = plan?.cardsPerDay ?? 5;
-  const used = freshUser.imagesToday ?? 0;
-  const remaining = Math.max(0, cardsDay - used);
+  const dailyLimit = plan?.rate_limit_daily ?? 50;
+  const dailyUsed = freshUser.daily_usage_count ?? 0;
+  const remaining = Math.max(0, dailyLimit - dailyUsed);
+  const totalCredits = (freshUser.monthly_credits ?? 0) + (freshUser.purchased_credits ?? 0);
 
   const caption = `🎴 <b>${session.title.slice(0, 60)}${session.title.length > 60 ? "..." : ""}</b>${session.label ? `\n🏷 ${session.label}` : ""}
 
 🎨 Template: <code>${session.templateName}</code>
 📐 Ratio: ${session.ratio}
-📊 Cards remaining today: <b>${remaining}/${cardsDay}</b>
+📊 Operations remaining today: <b>${remaining}/${dailyLimit}</b>
+💎 Credits remaining: <b>${totalCredits}</b>
 🆔 Card ID: #${savedId}`;
 
   // Save PNG locally for debugging (inspect via /api/bot/debug-card/:chatId)

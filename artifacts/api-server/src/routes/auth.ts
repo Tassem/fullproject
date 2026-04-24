@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
-import { usersTable, plansTable } from "@workspace/db";
+import { usersTable, plansTable, creditTransactionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signToken, requireAuth } from "../lib/auth";
 
@@ -17,25 +17,30 @@ function formatUser(user: typeof usersTable.$inferSelect, plan: typeof plansTabl
     apiKey: user.apiKey,
     botCode: user.botCode,
     isAdmin: user.isAdmin,
-    imagesToday: user.imagesToday,
-    credits: user.credits,
-    articlesThisMonth: user.articlesThisMonth,
     emailVerified: user.emailVerified,
     phone: user.phone,
+    credits: {
+      monthly: user.monthly_credits ?? 0,
+      purchased: user.purchased_credits ?? 0,
+      total: (user.monthly_credits ?? 0) + (user.purchased_credits ?? 0),
+      reset_date: user.credits_reset_date,
+      daily_usage: user.daily_usage_count ?? 0,
+    },
     planDetails: plan ? {
-      cardsPerDay: plan.cardsPerDay,
-      maxTemplates: plan.maxTemplates,
-      maxSavedDesigns: plan.maxSavedDesigns,
-      maxSites: plan.maxSites,
-      articlesPerMonth: plan.articlesPerMonth,
-      hasTelegramBot: plan.hasTelegramBot,
-      hasBlogAutomation: plan.hasBlogAutomation,
-      hasImageGenerator: plan.hasImageGenerator,
-      apiAccess: plan.apiAccess,
-      telegramBot: plan.telegramBot,
-      overlayUpload: plan.overlayUpload,
-      customWatermark: plan.customWatermark,
-      credits: plan.credits,
+      monthly_credits: plan.monthly_credits,
+      max_sites: plan.max_sites,
+      max_templates: plan.max_templates,
+      max_saved_designs: plan.max_saved_designs,
+      has_blog_automation: plan.has_blog_automation,
+      has_image_generator: plan.has_image_generator,
+      has_telegram_bot: plan.has_telegram_bot,
+      has_api_access: plan.has_api_access,
+      has_overlay_upload: plan.has_overlay_upload,
+      has_custom_watermark: plan.has_custom_watermark,
+      has_priority_processing: plan.has_priority_processing,
+      has_priority_support: plan.has_priority_support,
+      rate_limit_daily: plan.rate_limit_daily,
+      price_monthly: plan.price_monthly,
     } : null,
     createdAt: user.createdAt,
   };
@@ -52,23 +57,35 @@ router.post("/register", async (req, res) => {
     return res.status(400).json({ error: "Name, email, and password are required" });
   }
 
-  const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
-  if (existing) return res.status(409).json({ error: "Email already registered" });
+  const [existingEmail] = await db.select().from(usersTable).where(eq(usersTable.email, email)).limit(1);
+  if (existingEmail) return res.status(409).json({ error: "Email already registered" });
+
+  const [existingName] = await db.select().from(usersTable).where(eq(usersTable.name, name)).limit(1);
+  if (existingName) return res.status(409).json({ error: "Name already taken" });
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const apiKey = randomUUID().replace(/-/g, "");
-  const botCode = Math.random().toString(36).substring(2, 10).toUpperCase();
+  const apiKey = "key_" + randomUUID().replace(/-/g, "");
+  const botCode = "NB-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
+  // New users start on free plan with 30 purchased credits (welcome bonus)
   const [user] = await db.insert(usersTable).values({
     name,
     email,
     passwordHash,
     phone,
     plan: "free",
-    credits: 10,
+    purchased_credits: 30,
     apiKey,
     botCode,
   }).returning();
+
+  await db.insert(creditTransactionsTable).values({
+    userId: user.id,
+    type: "earn",
+    amount: 30,
+    description: "مكافأة الترحيب — حساب جديد",
+    service: "system",
+  });
 
   const plan = await getPlan(user.plan);
   const token = signToken({ userId: user.id, isAdmin: user.isAdmin });
@@ -94,15 +111,6 @@ router.post("/login", async (req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
-
-  // Reset daily counters if needed
-  const now = new Date();
-  const lastReset = user.imagesLastReset ? new Date(user.imagesLastReset) : null;
-  if (lastReset && (now.getDate() !== lastReset.getDate() || now.getMonth() !== lastReset.getMonth())) {
-    await db.update(usersTable).set({ imagesToday: 0, imagesLastReset: now }).where(eq(usersTable.id, user.id));
-    user.imagesToday = 0;
-  }
-
   const plan = await getPlan(user.plan);
   return res.json(formatUser(user, plan));
 });

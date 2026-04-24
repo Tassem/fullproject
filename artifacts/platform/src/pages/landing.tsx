@@ -14,12 +14,13 @@ import { Badge } from "@/components/ui/badge";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Plan {
-  id: number; name: string; slug: string;
-  priceMonthly: number; priceYearly: number;
-  cardsPerDay: number; maxSites: number;
-  articlesPerMonth: number; hasTelegramBot: boolean;
-  hasBlogAutomation: boolean; hasImageGenerator: boolean;
-  credits: number; isActive: boolean; sortOrder: number;
+  id: number; name: string; slug: string; description: string | null;
+  price_monthly: number; price_yearly: number;
+  monthly_credits: number; max_sites: number;
+  rate_limit_daily: number;
+  has_telegram_bot: boolean;
+  has_blog_automation: boolean; has_image_generator: boolean;
+  is_active: boolean; sort_order: number; is_free: boolean;
 }
 interface SiteInfo { settings: Record<string, string>; plans: Plan[]; }
 
@@ -236,7 +237,7 @@ export default function Landing() {
   });
 
   const s = data?.settings ?? {};
-  const plans = (data?.plans ?? []).sort((a, b) => a.sortOrder - b.sortOrder);
+  const plans = (data?.plans ?? []).sort((a, b) => a.sort_order - b.sort_order);
   const registrationEnabled = s.registration_enabled !== "false";
   const siteName = s.site_name || "MediaFlow";
   const siteLogo = s.site_logo_emoji || "⚡";
@@ -534,17 +535,16 @@ export default function Landing() {
 
           <div className={cn("grid gap-6", plans.length === 1 ? "max-w-sm mx-auto" : plans.length === 2 ? "grid-cols-1 md:grid-cols-2 max-w-2xl mx-auto" : plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-4")}>
             {plans.map((plan) => {
-              const isFree = plan.priceMonthly === 0;
-              const isPopular = plan.sortOrder === 1 || (plans.length >= 3 && plan.sortOrder === 1);
-              const price = billingYearly ? plan.priceYearly : plan.priceMonthly;
+              const isFree = plan.is_free || plan.price_monthly === 0;
+              const isPopular = plan.sort_order === 1 || (plans.length >= 3 && plan.sort_order === 1);
+              const price = billingYearly ? plan.price_yearly : plan.price_monthly;
               const features = [
-                plan.cardsPerDay > 0 && `${plan.cardsPerDay >= 999 ? t.unlimited : plan.cardsPerDay} ${t.feature_cards}`,
-                plan.articlesPerMonth > 0 && `${plan.articlesPerMonth >= 999 ? t.unlimited : plan.articlesPerMonth} ${t.feature_articles}`,
-                plan.maxSites > 0 && `${plan.maxSites >= 999 ? t.unlimited : plan.maxSites} ${t.feature_sites}`,
-                plan.hasBlogAutomation && t.feature_blog,
-                plan.hasImageGenerator && t.feature_image,
-                plan.hasTelegramBot && t.feature_telegram,
-                plan.credits > 0 && `${plan.credits} ${t.feature_credits}`,
+                plan.monthly_credits > 0 && `${plan.monthly_credits >= 999 ? t.unlimited : plan.monthly_credits} ${t.feature_credits}`,
+                plan.rate_limit_daily > 0 && `${plan.rate_limit_daily >= 999 ? t.unlimited : plan.rate_limit_daily} ${t.feature_cards}`,
+                plan.max_sites > 0 && `${plan.max_sites >= 999 ? t.unlimited : plan.max_sites} ${t.feature_sites}`,
+                plan.has_blog_automation && t.feature_blog,
+                plan.has_image_generator && t.feature_image,
+                plan.has_telegram_bot && t.feature_telegram,
               ].filter(Boolean);
 
               return (
@@ -572,13 +572,13 @@ export default function Landing() {
                         </span>
                       ) : (
                         <>
-                          <span className="text-4xl font-black text-white">${billingYearly ? (plan.priceYearly / 12).toFixed(0) : plan.priceMonthly}</span>
+                          <span className="text-4xl font-black text-white">${billingYearly ? (plan.price_yearly / 12).toFixed(0) : plan.price_monthly}</span>
                           <span className="text-zinc-500 text-sm mb-1.5">{t.per_month}</span>
                         </>
                       )}
                     </div>
                     {billingYearly && !isFree && (
-                      <p className="text-xs text-zinc-500 mt-1">{t.billing_yearly} — ${plan.priceYearly}{t.per_year}</p>
+                      <p className="text-xs text-zinc-500 mt-1">{t.billing_yearly} — ${plan.price_yearly}{t.per_year}</p>
                     )}
                   </div>
 

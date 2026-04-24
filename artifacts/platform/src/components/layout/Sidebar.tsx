@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, History, Layers,
   KeySquare, LogOut, Bot, CreditCard, PenTool,
-  Globe, FileText, GitBranch, ScrollText, ShieldCheck, Rss,
+  Globe, FileText, GitBranch, ScrollText, ShieldCheck, Rss, Zap,
 } from "lucide-react";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 
@@ -18,6 +18,7 @@ const MAIN_NAV = [
   { name: "Card History",    href: "/history",          icon: History         },
   { name: "Templates",       href: "/templates",        icon: Layers          },
   { name: "Template Builder",href: "/template-builder", icon: PenTool         },
+  { name: "Points",          href: "/points",           icon: Zap             },
   { name: "API Keys",        href: "/keys",             icon: KeySquare       },
   { name: "Telegram Bot",    href: "/telegram",         icon: Bot             },
   { name: "My Plan",         href: "/billing",          icon: CreditCard      },
@@ -75,6 +76,9 @@ export function Sidebar() {
       refetchOnWindowFocus: true,
     },
   });
+  const creditsTotal = typeof user?.credits === "object" && user?.credits !== null
+    ? ((user.credits as any)?.total ?? 0)
+    : null;
 
   const handleLogout = () => {
     localStorage.removeItem("pro_token");
@@ -82,8 +86,8 @@ export function Sidebar() {
   };
 
   const isAdmin  = user?.isAdmin;
-  const canBot   = isAdmin || user?.planDetails?.telegramBot === true;
-  const canApi   = isAdmin || user?.planDetails?.apiAccess === true;
+  const canBot   = isAdmin || user?.planDetails?.has_telegram_bot === true;
+  const canApi   = isAdmin || user?.planDetails?.has_api_access === true;
   const plan     = user?.plan ?? "free";
   const planInfo = PLAN_LABELS[plan] ?? PLAN_LABELS.free;
   const isInAdmin = location.startsWith("/blog-admin") || location.startsWith("/admin");
@@ -192,6 +196,25 @@ export function Sidebar() {
           </div>
         )}
       </nav>
+
+      {/* Credits strip */}
+      {creditsTotal !== null && (
+        <Link href="/points">
+          <div style={{
+            margin: "0 8px 6px",
+            background: "linear-gradient(135deg, rgba(124,58,237,0.12), rgba(99,102,241,0.06))",
+            border: "1px solid rgba(124,58,237,0.25)",
+            borderRadius: 10, padding: "8px 12px",
+            display: "flex", alignItems: "center", gap: 8, cursor: "pointer",
+          }}>
+            <Zap size={14} style={{ color: "#a78bfa", flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: "rgba(167,139,250,0.6)", fontWeight: 700, letterSpacing: "0.05em" }}>CREDITS</div>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "#a78bfa", lineHeight: 1.2 }}>{creditsTotal.toLocaleString()} CR</div>
+            </div>
+          </div>
+        </Link>
+      )}
 
       {/* Divider */}
       <div style={{ height: 1, background: "rgba(255,255,255,0.05)", margin: "0 14px" }} />

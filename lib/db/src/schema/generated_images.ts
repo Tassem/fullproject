@@ -16,6 +16,8 @@ export const generatedImagesTable = pgTable("generated_images", {
   bannerColor: varchar("banner_color", { length: 20 }).default("#1a1a2e"),
   textColor: varchar("text_color", { length: 20 }).default("#ffffff"),
   font: varchar("font", { length: 100 }).default("Inter"),
+  backgroundSource: varchar("background_source", { length: 20 }).default("uploaded"),
+  aiPrompt: text("ai_prompt"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

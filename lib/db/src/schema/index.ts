@@ -12,3 +12,4 @@ export * from "./rss_feeds";
 export * from "./subscriptions";
 export * from "./points";
 export * from "./payment_requests";
+export * from "./saved_designs";

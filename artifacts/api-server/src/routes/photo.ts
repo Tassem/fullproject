@@ -3,6 +3,8 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { requireAuth } from "../lib/auth";
+import { assertFeature, rejectGuard } from "../lib/planGuard";
+import { usersTable } from "@workspace/db";
 
 const router = Router();
 
@@ -28,7 +30,13 @@ const upload = multer({
   },
 });
 
-router.post("/upload", requireAuth, upload.single("photo"), (req: any, res: any) => {
+router.post("/upload", requireAuth, upload.single("photo"), async (req: any, res: any) => {
+  const user = req.user as typeof usersTable.$inferSelect;
+
+  // ── Plan enforcement: has_overlay_upload ─────────────────────────────────
+  const guard = await assertFeature(user.id, "has_overlay_upload");
+  if (!guard.ok) return rejectGuard(res, guard);
+
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const previewUrl = `/api/photo/file/${req.file.filename}`;
   return res.json({ previewUrl, filename: req.file.filename });

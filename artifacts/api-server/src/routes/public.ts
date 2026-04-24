@@ -62,7 +62,7 @@ router.get("/site-info", async (_req, res) => {
   const settings: Record<string, string> = {};
   for (const row of rows) settings[row.key] = row.value || "";
 
-  const plans = await db.select().from(plansTable).where(eq(plansTable.isActive, true));
+  const plans = await db.select().from(plansTable).where(eq(plansTable.is_active, true));
 
   return res.json({ settings, plans });
 });

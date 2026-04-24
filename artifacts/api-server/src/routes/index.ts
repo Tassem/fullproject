@@ -25,6 +25,11 @@ import publicRouter from "./public";
 import rssRouter from "./rss";
 import blogSettingsRouter from "./blog-settings";
 import nanobananaRouter from "./nanobanana/index";
+import pointsRouter from "./points";
+import v1Router from "./v1";
+import savedDesignsRouter from "./saved-designs";
+import aiBackgroundRouter from "./ai-background";
+import addonsRouter from "./addons";
 
 const router: IRouter = Router();
 
@@ -56,5 +61,11 @@ router.use("/rss", rssRouter);
 router.use("/rss-feeds", rssRouter);
 router.use("/blog-settings", blogSettingsRouter);
 router.use("/nanobanana", nanobananaRouter);
+router.use("/points", pointsRouter);
+router.use("/v1", v1Router);
+router.use("/saved-designs", savedDesignsRouter);
+router.use("/designs", savedDesignsRouter);
+router.use("/ai-background", aiBackgroundRouter);
+router.use("/addons", addonsRouter);
 
 export default router;

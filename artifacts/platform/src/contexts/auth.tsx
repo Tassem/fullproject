@@ -2,19 +2,27 @@ import { createContext, useContext, useState, useEffect, useCallback } from "rea
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 
 interface PlanDetails {
-  cardsPerDay?: number;
-  maxTemplates?: number;
-  maxSavedDesigns?: number;
-  maxSites?: number;
-  articlesPerMonth?: number;
-  hasTelegramBot?: boolean;
-  hasBlogAutomation?: boolean;
-  hasImageGenerator?: boolean;
-  apiAccess?: boolean;
-  telegramBot?: boolean;
-  overlayUpload?: boolean;
-  customWatermark?: boolean;
-  credits?: number;
+  monthly_credits?: number;
+  rate_limit_daily?: number;
+  max_templates?: number;
+  max_saved_designs?: number;
+  max_sites?: number;
+  has_blog_automation?: boolean;
+  has_image_generator?: boolean;
+  has_telegram_bot?: boolean;
+  has_api_access?: boolean;
+  has_overlay_upload?: boolean;
+  has_custom_watermark?: boolean;
+  has_priority_support?: boolean;
+  has_priority_processing?: boolean;
+}
+
+interface UserCredits {
+  monthly?: number;
+  purchased?: number;
+  total?: number;
+  daily_usage?: number;
+  daily_limit?: number;
 }
 
 interface User {
@@ -25,9 +33,7 @@ interface User {
   apiKey?: string;
   botCode?: string;
   isAdmin: boolean;
-  imagesToday?: number;
-  credits?: number;
-  articlesThisMonth?: number;
+  credits?: UserCredits;
   emailVerified?: boolean;
   phone?: string;
   planDetails?: PlanDetails;

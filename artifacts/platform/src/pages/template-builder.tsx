@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -7,6 +8,7 @@ import {
   AlignRight, Layers, Image, Type, Square, Circle, Minus, Grid,
   Download, FolderOpen,
 } from "lucide-react";
+
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const AC  = "#6366f1";
@@ -284,12 +286,153 @@ export default function TemplateBuilder() {
   const [watermarkBg, setWatermarkBg] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState<number | null>(null);
 
+  const [downloading, setDownloading] = useState(false);
+
+  // ── AI Background state ───────────────────────────────────────────────────
+  const [aiMode, setAiMode]           = useState(false);
+  const [aiStyle, setAiStyle]         = useState<"photorealistic" | "illustration" | "abstract">("photorealistic");
+  const [aiImageUrl, setAiImageUrl]   = useState<string | null>(null);
+  const [aiPromptText, setAiPromptText] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+
+  const { data: billingStatus } = useQuery({
+    queryKey: ["billing", "status"],
+    queryFn: async () => {
+      const t = localStorage.getItem("pro_token");
+      if (!t) return null;
+      const r = await fetch("/api/billing/status", { headers: { Authorization: `Bearer ${t}` } });
+      return r.json();
+    },
+    enabled: !!localStorage.getItem("pro_token"),
+  });
+  const hasAiFeature = !!(billingStatus?.plan?.has_ai_image_generation);
+
+  const handleGenerateAiBackground = async () => {
+    const titleEl = els.find(e => e.type === "text" && e.content && e.content.length > 5);
+    const titleText = titleEl?.content || tplName || "";
+    if (!titleText.trim()) {
+      toast({ title: "Add a headline first", description: "Type your news headline text before generating an AI background.", variant: "destructive" });
+      return;
+    }
+    setAiGenerating(true);
+    setAiImageUrl(null);
+    try {
+      const t = localStorage.getItem("pro_token");
+      const resp = await fetch("/api/ai-background/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
+        body: JSON.stringify({ title: titleText, aspectRatio: canvasSize.ratio, style: aiStyle }),
+      });
+      const data = await resp.json() as any;
+      if (!resp.ok) {
+        if (resp.status === 403) {
+          toast({ title: "Feature not available", description: "AI Image Generation requires an upgrade. Visit Billing to add this feature.", variant: "destructive" });
+        } else {
+          throw new Error(data.error || "Image generation failed");
+        }
+        return;
+      }
+      setAiMode(true);
+      setAiImageUrl(data.imageUrl);
+      setAiPromptText(data.prompt || "");
+      upd("bg", { src: data.imageUrl, gradient: undefined });
+      toast({ title: "✨ AI Background Ready", description: "Preview shown on canvas. Download to generate the final card (3 CR)." });
+    } catch (err: any) {
+      toast({ title: "Generation failed", description: err.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   const canvasRef  = useRef<HTMLDivElement>(null);
   const dragRef    = useRef<{ id: string; sx: number; sy: number; ox: number; oy: number } | null>(null);
   const resizeRef  = useRef<{ id: string; handle: string; sx: number; sy: number; ox: number; oy: number; ow: number; oh: number } | null>(null);
   const fileRef    = useRef<HTMLInputElement>(null);
   const logoRef    = useRef<HTMLInputElement>(null);
   const importRef  = useRef<HTMLInputElement>(null);
+
+  // ── Screenshot prevention ─────────────────────────────────────────────────
+  const [windowFocused, setWindowFocused] = useState(true);
+  useEffect(() => {
+    const blockScreenshot = (e: KeyboardEvent) => {
+      if (e.key === "PrintScreen") { e.preventDefault(); }
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === "s" || e.key === "S")) { e.preventDefault(); }
+      else if ((e.ctrlKey || e.metaKey) && e.shiftKey && ["3","4","5"].includes(e.key)) { e.preventDefault(); }
+    };
+    const blockContextMenu = (e: MouseEvent) => { if ((e.target as HTMLElement)?.closest?.("[data-canvas-area]")) { e.preventDefault(); } };
+    const onBlur  = () => setWindowFocused(false);
+    const onFocus = () => setWindowFocused(true);
+    document.addEventListener("keydown", blockScreenshot, { capture: true });
+    document.addEventListener("contextmenu", blockContextMenu);
+    window.addEventListener("blur",  onBlur);
+    window.addEventListener("focus", onFocus);
+    return () => {
+      document.removeEventListener("keydown", blockScreenshot, { capture: true });
+      document.removeEventListener("contextmenu", blockContextMenu);
+      window.removeEventListener("blur",  onBlur);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
+  // ── Generate card via server (proper Arabic font, saves to history, deducts points) ─────────
+  const handleDownloadImage = async () => {
+    const token = localStorage.getItem("pro_token");
+    if (!token) { toast({ title: "Not logged in", variant: "destructive" }); return; }
+    setDownloading(true);
+    try {
+      // 1. Upload any base64 images (photo / bg / logo) to server → get server URLs
+      const uploadedEls: CE[] = [];
+      for (const e of els) {
+        if (e.src && e.src.startsWith("data:")) {
+          const serverUrl = await uploadBase64(e.src, token);
+          uploadedEls.push({ ...e, src: serverUrl || e.src });
+        } else {
+          uploadedEls.push(e);
+        }
+      }
+
+      // 2. POST canvas layout to server for server-side rendering
+      const titleEl2 = uploadedEls.find(e => e.type === "text" && e.content && e.content.length > 3);
+      const resp = await fetch("/api/generate/from-builder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          elements: uploadedEls,
+          canvasWidth:  canvasSize.w,
+          canvasHeight: canvasSize.h,
+          title: titleEl2?.content || tplName,
+          backgroundSource: aiMode && aiImageUrl ? "ai_generated" : "uploaded",
+          aiPrompt: aiMode && aiPromptText ? aiPromptText : undefined,
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error((err as any).error || "Server render failed");
+      }
+
+      const data = await resp.json() as { imageUrl: string };
+      if (!data.imageUrl) throw new Error("No image URL returned");
+
+      // 3. Download the server-rendered PNG
+      const a = document.createElement("a");
+      a.href = data.imageUrl;
+      a.download = `${tplName || "card"}.png`;
+      a.target = "_blank";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      toast({
+        title: "✅ Card Generated",
+        description: "Image saved — visible in Card History",
+      });
+    } catch (err: any) {
+      toast({ title: "Error", description: err?.message || "Failed to generate card", variant: "destructive" });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const sel = els.find(e => e.id === selId) ?? null;
 
@@ -794,6 +937,14 @@ export default function TemplateBuilder() {
 
         <div style={{ width: 1, height: 28, background: BD }} />
 
+        {/* Download as image */}
+        <button onClick={handleDownloadImage} disabled={downloading} title="Generate card via server (proper Arabic text, saves to history, deducts 1 point)" style={{
+          ...toolBtn, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
+          color: "#6ee7b7", padding: "7px 14px", gap: 6, fontWeight: 700, fontSize: 12,
+        }}>
+          <Download size={13} /> {downloading ? "Generating…" : "Generate Card"}
+        </button>
+
         {/* Save */}
         <button onClick={handleSave} disabled={saving} style={{
           ...toolBtn, background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.3)",
@@ -869,6 +1020,76 @@ export default function TemplateBuilder() {
                   <ElBtn icon={<Minus size={14} />}  label="Line"      onClick={() => addEl("line", { w: 400, h: 10 })} />
                   <ElBtn icon="📸" label="Photo Frame" onClick={() => addEl("photo", { w: 240, h: 160 })} />
                 </div>
+
+                {/* ── AI Background section ── */}
+                <SectionTitle>AI Background</SectionTitle>
+                {hasAiFeature ? (
+                  <div style={{ marginBottom: 14 }}>
+                    {/* Style selector */}
+                    <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
+                      {(["photorealistic", "illustration", "abstract"] as const).map(s => (
+                        <button key={s} onClick={() => setAiStyle(s)} style={{
+                          flex: 1, padding: "5px 0", borderRadius: 7, cursor: "pointer",
+                          fontSize: 10, fontFamily: "'Cairo', sans-serif",
+                          border: aiStyle === s ? "1.5px solid #6366f1" : `1px solid ${BD}`,
+                          background: aiStyle === s ? "rgba(99,102,241,0.15)" : BG,
+                          color: aiStyle === s ? "#a5b4fc" : MT,
+                        }}>
+                          {s === "photorealistic" ? "📷 Photo" : s === "illustration" ? "🎨 Illus." : "🌀 Abstract"}
+                        </button>
+                      ))}
+                    </div>
+                    {/* Generate button */}
+                    <button onClick={handleGenerateAiBackground} disabled={aiGenerating}
+                      style={{
+                        width: "100%", padding: "9px", borderRadius: 9, cursor: aiGenerating ? "not-allowed" : "pointer",
+                        background: aiGenerating ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                        border: "none", color: "#fff", fontSize: 11, fontFamily: "'Cairo', sans-serif",
+                        fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                        opacity: aiGenerating ? 0.7 : 1,
+                      }}>
+                      {aiGenerating
+                        ? <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span> Generating…</>
+                        : <><span>✨</span> Generate AI Background</>}
+                    </button>
+                    {/* Reset AI mode */}
+                    {aiMode && aiImageUrl && (
+                      <button onClick={() => { setAiMode(false); setAiImageUrl(null); setAiPromptText(""); upd("bg", { src: undefined }); }}
+                        style={{
+                          width: "100%", marginTop: 5, padding: "5px", borderRadius: 7, cursor: "pointer",
+                          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
+                          color: "#f87171", fontSize: 10, fontFamily: "'Cairo', sans-serif",
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                        }}>
+                        <Trash2 size={10} /> Remove AI Background
+                      </button>
+                    )}
+                    {aiImageUrl && (
+                      <div style={{ marginTop: 7, borderRadius: 8, overflow: "hidden", border: `1px solid ${BD}` }}>
+                        <img src={aiImageUrl} alt="AI Background Preview"
+                          style={{ width: "100%", display: "block", objectFit: "cover", maxHeight: 90 }} />
+                        <p style={{ margin: 0, padding: "4px 6px", fontSize: 9, color: MT,
+                          fontFamily: "'Cairo', sans-serif", background: "rgba(0,0,0,0.5)" }}>
+                          ✓ Applied — costs 3 CR on download
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{
+                    marginBottom: 14, padding: "12px", borderRadius: 10,
+                    background: "rgba(99,102,241,0.06)", border: `1px dashed rgba(99,102,241,0.3)`,
+                    textAlign: "center",
+                  }}>
+                    <div style={{ fontSize: 20, marginBottom: 5 }}>🔒</div>
+                    <p style={{ margin: 0, fontSize: 11, color: MT, fontFamily: "'Cairo', sans-serif", lineHeight: 1.5 }}>
+                      AI Image Generation is a paid add-on.
+                    </p>
+                    <p style={{ margin: "4px 0 0", fontSize: 10, color: "#6366f1", fontFamily: "'Cairo', sans-serif" }}>
+                      39$/mo — available in Billing
+                    </p>
+                  </div>
+                )}
 
                 {/* ── Background section ── */}
                 <SectionTitle>Ready Backgrounds</SectionTitle>
@@ -989,10 +1210,26 @@ export default function TemplateBuilder() {
             boxShadow: "0 30px 100px rgba(0,0,0,0.8), 0 0 0 1px rgba(255,255,255,0.06)",
             borderRadius: 2,
           }}>
-            <div ref={canvasRef} style={{
+            <div ref={canvasRef} data-canvas-area="true" style={{
               width: canvasSize.w, height: canvasSize.h, position: "relative", overflow: "hidden",
               userSelect: "none", cursor: "default",
+              WebkitUserSelect: "none", MozUserSelect: "none",
             }}>
+              {/* Blur overlay shown when window loses focus (reduces OS screenshot risk) */}
+              {!windowFocused && (
+                <div style={{
+                  position: "absolute", inset: 0, zIndex: 9999,
+                  backdropFilter: "blur(18px)",
+                  WebkitBackdropFilter: "blur(18px)",
+                  background: "rgba(0,0,0,0.45)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexDirection: "column", gap: 8,
+                }}>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", fontWeight: 700, letterSpacing: "0.05em" }}>
+                    Click to resume editing
+                  </div>
+                </div>
+              )}
               {sortedEls.map(el => {
                 if (el.hidden) return null;
                 const isSelected = el.id === selId;

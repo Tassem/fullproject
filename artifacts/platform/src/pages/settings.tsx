@@ -1,24 +1,26 @@
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
-import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Form, FormField, FormItem, FormLabel, FormControl, FormMessage } from "@/components/ui/form";
+import { AppLayout } from "@/components/layout/AppLayout";
 import { Badge } from "@/components/ui/badge";
-import { Settings, User, CreditCard, Key, Check } from "lucide-react";
+import { Settings, User, CreditCard, Key, Check, X, Zap, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const { user } = useAuth();
 
   const plan = user?.plan || "free";
-  const limits: Record<string, unknown> = {};
+  const pd = user?.planDetails;
+  const cr = user?.credits;
+
+  const monthly  = cr?.monthly  ?? 0;
+  const purchased = cr?.purchased ?? 0;
+  const total    = cr?.total    ?? 0;
+  const dailyUsage = cr?.daily_usage ?? 0;
+  const dailyLimit = cr?.daily_limit ?? 0;
 
   return (
     <AppLayout title="Settings">
       <div className="max-w-xl space-y-5">
+
         {/* Account */}
         <div className="bg-card border border-card-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
@@ -50,47 +52,87 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Plan */}
+        {/* Plan & Credits */}
         <div className="bg-card border border-card-border rounded-xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <CreditCard className="w-4 h-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold text-foreground">Plan & Usage</h2>
+            <h2 className="text-sm font-semibold text-foreground">Plan & Credits</h2>
           </div>
-          <div className="flex items-center gap-3 mb-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-base font-bold text-foreground capitalize">{plan}</span>
-                <Badge variant="outline" className="capitalize">{plan}</Badge>
-              </div>
-              <p className="text-xs text-muted-foreground mt-0.5">{user?.credits ?? 0} credits available</p>
+
+          {/* Plan name */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-base font-bold text-foreground capitalize">{plan}</span>
+            <Badge variant="outline" className="capitalize">{plan}</Badge>
+          </div>
+
+          {/* Credits grid */}
+          <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="bg-muted/40 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <Zap className="w-3 h-3" /> Monthly
+              </p>
+              <p className="text-sm font-bold text-foreground mt-1">{monthly} cr</p>
+            </div>
+            <div className="bg-muted/40 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <RefreshCw className="w-3 h-3" /> Purchased
+              </p>
+              <p className="text-sm font-bold text-violet-400 mt-1">{purchased} cr</p>
+            </div>
+            <div className="bg-muted/40 rounded-lg p-3">
+              <p className="text-xs text-muted-foreground">Total</p>
+              <p className="text-sm font-bold text-foreground mt-1">{total} cr</p>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          {/* Daily usage */}
+          <div className="bg-muted/40 rounded-lg p-3 mb-4">
+            <div className="flex justify-between text-xs text-muted-foreground mb-1">
+              <span>Daily Usage</span>
+              <span>{dailyUsage} / {dailyLimit === 999 ? "∞" : dailyLimit}</span>
+            </div>
+            {dailyLimit > 0 && dailyLimit < 999 && (
+              <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full"
+                  style={{ width: `${Math.min(100, Math.round((dailyUsage / dailyLimit) * 100))}%` }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Plan limits */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
             {[
-              { label: "Cards / Day", value: limits.cardsPerDay, used: user?.imagesToday },
-              { label: "Templates", value: limits.maxTemplates },
-              { label: "Sites", value: limits.maxSites },
-              { label: "Articles / Month", value: limits.articlesPerMonth, used: user?.articlesThisMonth },
-            ].map(({ label, value, used }) => (
+              { label: "Daily Limit", value: pd?.rate_limit_daily != null ? (pd.rate_limit_daily >= 999 ? "∞" : pd.rate_limit_daily) : "—" },
+              { label: "Max Templates", value: pd?.max_templates != null ? (pd.max_templates <= 0 ? "—" : pd.max_templates) : "—" },
+              { label: "Max Sites", value: pd?.max_sites != null ? (pd.max_sites <= 0 ? "—" : pd.max_sites) : "—" },
+              { label: "Monthly Credits", value: pd?.monthly_credits != null ? pd.monthly_credits : "—" },
+            ].map(({ label, value }) => (
               <div key={label} className="bg-muted/40 rounded-lg p-3">
                 <p className="text-xs text-muted-foreground">{label}</p>
-                <p className="text-sm font-semibold text-foreground mt-0.5">
-                  {used !== undefined ? `${used} / ` : ""}{value != null ? String(value) : "—"}
-                </p>
+                <p className="text-sm font-semibold text-foreground mt-0.5">{String(value)}</p>
               </div>
             ))}
           </div>
-          <div className="mt-4 space-y-1.5">
+
+          {/* Feature flags */}
+          <div className="space-y-1.5">
             {[
-              { label: "Image Generator", on: limits.hasImageGenerator },
-              { label: "Blog Automation", on: limits.hasBlogAutomation },
-              { label: "Telegram Bot", on: limits.hasTelegramBot },
-              { label: "API Access", on: limits.apiAccess },
-              { label: "Overlay Upload", on: limits.overlayUpload },
+              { label: "Image Generator",  on: pd?.has_image_generator },
+              { label: "Blog Automation",  on: pd?.has_blog_automation },
+              { label: "Telegram Bot",     on: pd?.has_telegram_bot },
+              { label: "API Access",       on: pd?.has_api_access },
+              { label: "Overlay Upload",   on: pd?.has_overlay_upload },
+              { label: "Custom Watermark", on: pd?.has_custom_watermark },
             ].map(({ label, on }) => (
               <div key={label} className="flex items-center gap-2">
-                <Check className={cn("w-3.5 h-3.5", on ? "text-emerald-500" : "text-muted-foreground/30")} />
-                <span className={cn("text-xs", on ? "text-foreground" : "text-muted-foreground/50")}>{label}</span>
+                {on
+                  ? <Check className="w-3.5 h-3.5 text-emerald-500" />
+                  : <X className="w-3.5 h-3.5 text-muted-foreground/30" />}
+                <span className={cn("text-xs", on ? "text-foreground" : "text-muted-foreground/50")}>
+                  {label}
+                </span>
               </div>
             ))}
           </div>

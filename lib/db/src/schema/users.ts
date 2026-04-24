@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, boolean, timestamp, varchar } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, integer, boolean, timestamp, varchar, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -9,16 +9,19 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash"),
   phone: text("phone"),
   plan: varchar("plan", { length: 50 }).notNull().default("free"),
-  credits: integer("credits").notNull().default(0),
+
+  monthly_credits: integer("monthly_credits").notNull().default(0),
+  purchased_credits: integer("purchased_credits").notNull().default(0),
+  credits_reset_date: timestamp("credits_reset_date"),
+
+  daily_usage_count: integer("daily_usage_count").notNull().default(0),
+  daily_usage_date: date("daily_usage_date"),
+
   apiKey: text("api_key"),
   botCode: text("bot_code"),
   telegramChatId: text("telegram_chat_id"),
   isAdmin: boolean("is_admin").notNull().default(false),
   emailVerified: boolean("email_verified").notNull().default(false),
-  imagesToday: integer("images_today").notNull().default(0),
-  imagesLastReset: timestamp("images_last_reset").defaultNow(),
-  articlesThisMonth: integer("articles_this_month").notNull().default(0),
-  articlesLastReset: timestamp("articles_last_reset").defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

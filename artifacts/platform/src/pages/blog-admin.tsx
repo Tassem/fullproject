@@ -9,7 +9,8 @@ import {
   MessageCircle, Phone, Mail, Send, RefreshCw, TrendingUp,
   Award, Activity, ToggleLeft, AlertTriangle, Ban,
   Star, Bot, Coins, SlidersHorizontal, Link, Hash,
-  Image as ImageIcon, Palette, Rss
+  Image as ImageIcon, Palette, Rss, Puzzle,
+  Sparkles, Package, ChevronDown
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -46,7 +47,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-type Tab = "overview" | "users" | "payments" | "plans" | "points" | "images" | "templates" | "bot" | "channels" | "system";
+type Tab = "overview" | "users" | "payments" | "plans" | "points" | "addons" | "images" | "templates" | "bot" | "channels" | "system";
 
 const TABS: { id: Tab; label: string; labelAr: string; icon: React.ElementType; color: string; bg: string }[] = [
   { id: "overview",   label: "Overview",   labelAr: "Overview",   icon: LayoutDashboard, color: "#38bdf8", bg: "rgba(56,189,248,0.12)"   },
@@ -54,6 +55,7 @@ const TABS: { id: Tab; label: string; labelAr: string; icon: React.ElementType; 
   { id: "payments",   label: "Payments",   labelAr: "Payments",   icon: CreditCard,      color: "#34d399", bg: "rgba(52,211,153,0.12)"   },
   { id: "plans",      label: "Plans",      labelAr: "Plans",     icon: Layers,          color: "#f59e0b", bg: "rgba(245,158,11,0.12)"   },
   { id: "points",     label: "Points",     labelAr: "Points",      icon: Coins,           color: "#fb923c", bg: "rgba(251,146,60,0.12)"   },
+  { id: "addons",     label: "Add-ons",    labelAr: "Add-ons",     icon: Puzzle,          color: "#c084fc", bg: "rgba(192,132,252,0.12)"  },
   { id: "images",     label: "Images",     labelAr: "Images",       icon: ImageIcon,       color: "#22d3ee", bg: "rgba(34,211,238,0.12)"   },
   { id: "templates",  label: "Templates",  labelAr: "Templates",     icon: Palette,         color: "#f472b6", bg: "rgba(244,114,182,0.12)"  },
   { id: "channels",   label: "Channels",   labelAr: "Channels",     icon: Rss,             color: "#4ade80", bg: "rgba(74,222,128,0.12)"   },
@@ -461,8 +463,8 @@ function PaymentsTab() {
     },
   });
 
-  const pending = (data?.requests ?? []).filter((r) => r.request.status === "pending");
-  const processed = (data?.requests ?? []).filter((r) => r.request.status !== "pending");
+  const pending = (data?.requests ?? []).filter((r) => r.status === "pending");
+  const processed = (data?.requests ?? []).filter((r) => r.status !== "pending");
 
   return (
     <div className="p-8 space-y-6">
@@ -504,33 +506,33 @@ function PaymentsTab() {
 
           <div className="space-y-3">
             {pending.map((req) => (
-              <div key={req.request.id} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-indigo-500/20 transition-all">
+              <div key={req.id} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-indigo-500/20 transition-all">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex gap-4 items-start">
                     <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
-                      {req.request.type === "plan_upgrade" ? <Layers className="w-6 h-6" /> : <Zap className="w-6 h-6" />}
+                      {req.type === "plan_upgrade" ? <Layers className="w-6 h-6" /> : <Zap className="w-6 h-6" />}
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-black text-white">{req.username}</span>
+                        <span className="text-sm font-black text-white">{req.userName}</span>
                         <ArrowRight className="w-3 h-3 text-zinc-600" />
                         <span className="text-xs text-indigo-400 font-bold">
-                          {req.plan_name || `${req.request.points_amount} Points`}
+                          {req.planName || `${req.pointsAmount} Points`}
                         </span>
                       </div>
                       <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-3">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(req.request.created_at).toLocaleString()}</span>
-                        <span className="flex items-center gap-1 text-amber-500"><AlertTriangle className="w-3 h-3" /> ID: {req.request.proof_details?.slice(0, 24)}</span>
+                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(req.createdAt).toLocaleString()}</span>
+                        <span className="flex items-center gap-1 text-amber-500"><AlertTriangle className="w-3 h-3" /> ID: {req.proofDetails?.slice(0, 24)}</span>
                       </div>
                       {/* Proof image if URL */}
-                      {req.request.proof_details?.startsWith("http") && (
-                        <a href={req.request.proof_details} target="_blank" rel="noopener noreferrer"
+                      {req.proofDetails?.startsWith("http") && (
+                        <a href={req.proofDetails} target="_blank" rel="noopener noreferrer"
                           className="text-[10px] text-blue-400 flex items-center gap-1 mt-1 hover:underline">
                           <ExternalLink className="w-3 h-3" /> View Proof Screenshot
                         </a>
                       )}
-                      {!req.request.proof_details?.startsWith("http") && req.request.proof_details && (
-                        <p className="text-[10px] text-zinc-600 italic mt-1">"{req.request.proof_details}"</p>
+                      {!req.proofDetails?.startsWith("http") && req.proofDetails && (
+                        <p className="text-[10px] text-zinc-600 italic mt-1">"{req.proofDetails}"</p>
                       )}
                     </div>
                   </div>
@@ -538,7 +540,7 @@ function PaymentsTab() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => denyMutation.mutate(req.request.id)}
+                      onClick={() => denyMutation.mutate(req.id)}
                       disabled={denyMutation.isPending}
                       className="rounded-xl text-rose-400 hover:bg-rose-500/10"
                     >
@@ -546,7 +548,7 @@ function PaymentsTab() {
                     </Button>
                     <Button
                       size="sm"
-                      onClick={() => approveMutation.mutate(req.request.id)}
+                      onClick={() => approveMutation.mutate(req.id)}
                       disabled={approveMutation.isPending}
                       className="rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white"
                     >
@@ -565,12 +567,12 @@ function PaymentsTab() {
               </summary>
               <div className="mt-3 space-y-2">
                 {processed.map((req) => (
-                  <div key={req.request.id} className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.03] flex items-center justify-between">
-                    <span className="text-xs text-zinc-500">{req.username} — {req.plan_name || `${req.request.points_amount} PT`}</span>
+                  <div key={req.id} className="p-4 rounded-xl bg-white/[0.01] border border-white/[0.03] flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">{req.userName} — {req.planName || `${req.pointsAmount} PT`}</span>
                     <span className={cn("text-[9px] font-black px-2 py-0.5 rounded-full border uppercase",
-                      req.request.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20"
+                      req.status === "approved" ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-rose-400 bg-rose-500/10 border-rose-500/20"
                     )}>
-                      {req.request.status}
+                      {req.status}
                     </span>
                   </div>
                 ))}
@@ -659,14 +661,15 @@ function PaymentsTab() {
 
 // ─── Plans Tab ────────────────────────────────────────────────────────────────
 const EMPTY_PLAN = {
-  name: "", display_name: "", description: "",
+  name: "", description: "",
   price_monthly: 0, price_yearly: 0,
-  cards_per_day: 5, max_templates: 3, max_saved_designs: 5,
-  max_sites: 1, max_articles_per_month: 0,
+  monthly_credits: 30, rate_limit_daily: 10,
+  max_templates: 3, max_saved_designs: 5, max_sites: 0,
   has_blog_automation: false, has_image_generator: true,
-  api_access: false, telegram_bot: false,
-  overlay_upload: false, custom_watermark: false,
-  credits: 10, sort_order: 0, is_active: true,
+  has_api_access: false, has_telegram_bot: false,
+  has_overlay_upload: false, has_custom_watermark: false,
+  has_priority_support: false, has_priority_processing: false,
+  is_free: false, sort_order: 0, is_active: true,
 };
 
 function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -728,8 +731,8 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
               className="bg-black border-white/10 h-10 rounded-xl text-sm" />
           </div>
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-zinc-500">Credits</Label>
-            <Input type="number" value={plan.credits ?? 0} onChange={e => num("credits", e.target.value)}
+            <Label className="text-[10px] font-black uppercase text-zinc-500">Credits/month</Label>
+            <Input type="number" value={plan.monthly_credits ?? 0} onChange={e => num("monthly_credits", e.target.value)}
               className="bg-black border-white/10 h-10 rounded-xl text-sm" />
           </div>
           <div className="space-y-1">
@@ -745,8 +748,8 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
         <p className="text-[9px] font-black uppercase text-zinc-600 mb-2 tracking-widest">🗞 Image Design</p>
         <div className="grid grid-cols-3 gap-3 mb-3">
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-zinc-500">Cards/day</Label>
-            <Input type="number" value={plan.cards_per_day ?? 5} onChange={e => num("cards_per_day", e.target.value)}
+            <Label className="text-[10px] font-black uppercase text-zinc-500">Daily limit (999=∞)</Label>
+            <Input type="number" value={plan.rate_limit_daily ?? 10} onChange={e => num("rate_limit_daily", e.target.value)}
               className="bg-black border-white/10 h-10 rounded-xl text-sm" />
           </div>
           <div className="space-y-1">
@@ -762,8 +765,8 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
         </div>
         <div className="grid grid-cols-2 gap-2">
           <ToggleField label="Image Generator" checked={plan.has_image_generator ?? true} onChange={v => tog("has_image_generator", v)} />
-          <ToggleField label="Custom Watermark" checked={plan.custom_watermark ?? false} onChange={v => tog("custom_watermark", v)} />
-          <ToggleField label="Overlay Upload" checked={plan.overlay_upload ?? false} onChange={v => tog("overlay_upload", v)} />
+          <ToggleField label="Custom Watermark" checked={plan.has_custom_watermark ?? false} onChange={v => tog("has_custom_watermark", v)} />
+          <ToggleField label="Overlay Upload" checked={plan.has_overlay_upload ?? false} onChange={v => tog("has_overlay_upload", v)} />
         </div>
       </div>
 
@@ -772,13 +775,8 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
         <p className="text-[9px] font-black uppercase text-zinc-600 mb-2 tracking-widest">📡 Blog Automation</p>
         <div className="grid grid-cols-2 gap-3 mb-3">
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-zinc-500">Articles/month (0=∞)</Label>
-            <Input type="number" value={plan.max_articles_per_month ?? 0} onChange={e => num("max_articles_per_month", e.target.value)}
-              className="bg-black border-white/10 h-10 rounded-xl text-sm" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-zinc-500">WordPress Sites (0=∞)</Label>
-            <Input type="number" value={plan.max_sites ?? 1} onChange={e => num("max_sites", e.target.value)}
+            <Label className="text-[10px] font-black uppercase text-zinc-500">WordPress Sites (0=none)</Label>
+            <Input type="number" value={plan.max_sites ?? 0} onChange={e => num("max_sites", e.target.value)}
               className="bg-black border-white/10 h-10 rounded-xl text-sm" />
           </div>
         </div>
@@ -789,8 +787,10 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
       <div>
         <p className="text-[9px] font-black uppercase text-zinc-600 mb-2 tracking-widest">⚙️ General</p>
         <div className="grid grid-cols-2 gap-2">
-          <ToggleField label="API Access" checked={plan.api_access ?? false} onChange={v => tog("api_access", v)} />
-          <ToggleField label="Telegram Bot" checked={plan.telegram_bot ?? false} onChange={v => tog("telegram_bot", v)} />
+          <ToggleField label="API Access" checked={plan.has_api_access ?? false} onChange={v => tog("has_api_access", v)} />
+          <ToggleField label="Telegram Bot" checked={plan.has_telegram_bot ?? false} onChange={v => tog("has_telegram_bot", v)} />
+          <ToggleField label="Priority Support" checked={plan.has_priority_support ?? false} onChange={v => tog("has_priority_support", v)} />
+          <ToggleField label="Is Free Plan" checked={plan.is_free ?? false} onChange={v => tog("is_free", v)} />
           <ToggleField label="Plan is Active" checked={plan.is_active ?? true} onChange={v => tog("is_active", v)} />
         </div>
       </div>
@@ -907,9 +907,9 @@ function PlansTab() {
               <p className="text-[9px] font-black text-zinc-600 uppercase mb-1">🗞 Image Design</p>
               <div className="grid grid-cols-3 gap-1.5">
                 {[
-                  { label: "Cards/day", value: plan.cards_per_day },
+                  { label: "Credits/mo", value: plan.monthly_credits },
+                  { label: "Daily limit", value: plan.rate_limit_daily },
                   { label: "Templates", value: plan.max_templates },
-                  { label: "Designs", value: plan.max_saved_designs },
                 ].map(item => (
                   <div key={item.label} className="p-2 rounded-lg bg-black/40 border border-white/5 text-center">
                     <p className="text-xs font-black text-white font-mono">{item.value === 0 ? "∞" : item.value}</p>
@@ -924,7 +924,6 @@ function PlansTab() {
               <p className="text-[9px] font-black text-zinc-600 uppercase mb-1">📡 Blog Automation</p>
               <div className="grid grid-cols-2 gap-1.5">
                 {[
-                  { label: "Articles/mo", value: plan.max_articles_per_month },
                   { label: "Sites", value: plan.max_sites },
                 ].map(item => (
                   <div key={item.label} className={cn("p-2 rounded-lg border text-center",
@@ -940,11 +939,11 @@ function PlansTab() {
             <div className="flex flex-wrap gap-1 mb-3">
               {plan.has_image_generator && <span className="text-[9px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-1.5 py-0.5 rounded font-bold">Images</span>}
               {plan.has_blog_automation && <span className="text-[9px] bg-green-500/10 text-green-400 border border-green-500/20 px-1.5 py-0.5 rounded font-bold">Blog</span>}
-              {plan.api_access && <span className="text-[9px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-bold">API</span>}
-              {plan.telegram_bot && <span className="text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1.5 py-0.5 rounded font-bold">Telegram</span>}
-              {plan.overlay_upload && <span className="text-[9px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded font-bold">Overlay</span>}
-              {plan.custom_watermark && <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded font-bold">Watermark</span>}
-              <span className="text-[9px] bg-white/5 text-zinc-400 border border-white/5 px-1.5 py-0.5 rounded font-bold">{plan.credits} pts</span>
+              {plan.has_api_access && <span className="text-[9px] bg-purple-500/10 text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded font-bold">API</span>}
+              {plan.has_telegram_bot && <span className="text-[9px] bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 px-1.5 py-0.5 rounded font-bold">Telegram</span>}
+              {plan.has_overlay_upload && <span className="text-[9px] bg-orange-500/10 text-orange-400 border border-orange-500/20 px-1.5 py-0.5 rounded font-bold">Overlay</span>}
+              {plan.has_custom_watermark && <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded font-bold">Watermark</span>}
+              <span className="text-[9px] bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1.5 py-0.5 rounded font-bold">{plan.monthly_credits} cr/mo</span>
             </div>
 
             <Button
@@ -999,13 +998,403 @@ function PlansTab() {
   );
 }
 
+// ─── Add-ons Tab ──────────────────────────────────────────────────────────────
+const ADDON_TYPES = [
+  { value: "feature", label: "Feature Unlock", icon: "✨" },
+  { value: "credits", label: "Credits Bundle", icon: "🪙" },
+  { value: "limit",   label: "Limit Boost",    icon: "📈" },
+];
+
+interface AdminAddon {
+  id: number; name: string; slug: string;
+  type: string; credits_amount: number;
+  feature_key: string | null; limit_key: string | null; limit_value: number | null;
+  price: number; is_recurring: boolean; is_active: boolean;
+  subscriber_count: number; createdAt: string;
+}
+
+interface AddonSubscriber {
+  userAddonId: number; userId: number;
+  userName: string; userEmail: string; userPlan: string;
+  purchasedAt: string; expiresAt: string | null; isActive: boolean;
+}
+
+const EMPTY_ADDON = {
+  name: "", slug: "", type: "feature",
+  credits_amount: 0, feature_key: "", limit_key: "", limit_value: 0,
+  price: 0, is_recurring: false, is_active: true,
+};
+
+function AddonManagementTab() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const A = () => ({ Authorization: `Bearer ${localStorage.getItem("pro_token")}` });
+
+  const [editing, setEditing] = useState<AdminAddon | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [form, setForm] = useState<typeof EMPTY_ADDON>({ ...EMPTY_ADDON });
+  const [saving, setSaving] = useState(false);
+  const [viewingSubs, setViewingSubs] = useState<AdminAddon | null>(null);
+  const [grantUserId, setGrantUserId] = useState("");
+  const [grantExpiry, setGrantExpiry] = useState("");
+  const [granting, setGranting] = useState(false);
+
+  const { data, isLoading, refetch } = useQuery<{ addons: AdminAddon[] }>({
+    queryKey: ["admin", "addons"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/addons", { headers: A() });
+      if (!r.ok) throw new Error("Failed");
+      return r.json();
+    },
+  });
+
+  const { data: subData, refetch: refetchSubs } = useQuery<{ subscribers: AddonSubscriber[] }>({
+    queryKey: ["admin", "addons", viewingSubs?.id, "subs"],
+    queryFn: async () => {
+      if (!viewingSubs) return { subscribers: [] };
+      const r = await fetch(`/api/admin/addons/${viewingSubs.id}/subscribers`, { headers: A() });
+      if (!r.ok) return { subscribers: [] };
+      return r.json();
+    },
+    enabled: !!viewingSubs,
+  });
+
+  const openCreate = () => {
+    setForm({ ...EMPTY_ADDON });
+    setEditing(null);
+    setCreating(true);
+  };
+
+  const openEdit = (a: AdminAddon) => {
+    setForm({
+      name: a.name, slug: a.slug, type: a.type,
+      credits_amount: a.credits_amount, feature_key: a.feature_key ?? "",
+      limit_key: a.limit_key ?? "", limit_value: a.limit_value ?? 0,
+      price: a.price, is_recurring: a.is_recurring, is_active: a.is_active,
+    });
+    setEditing(a);
+    setCreating(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.name || !form.slug) { toast({ title: "Name and slug are required", variant: "destructive" }); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        feature_key: form.feature_key || null,
+        limit_key: form.limit_key || null,
+        limit_value: form.limit_value || null,
+        credits_amount: Number(form.credits_amount),
+        price: Number(form.price),
+        limit_value2: Number(form.limit_value) || null,
+      };
+      const url = editing ? `/api/admin/addons/${editing.id}` : "/api/admin/addons";
+      const method = editing ? "PUT" : "POST";
+      const r = await fetch(url, {
+        method, headers: { "Content-Type": "application/json", ...A() },
+        body: JSON.stringify(payload),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+      toast({ title: editing ? "Addon updated" : "Addon created" });
+      setCreating(false); setEditing(null);
+      refetch();
+    } catch (err: any) {
+      toast({ title: err.message, variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  const handleDeactivate = async (id: number) => {
+    if (!confirm("Deactivate this addon?")) return;
+    await fetch(`/api/admin/addons/${id}`, { method: "DELETE", headers: A() });
+    toast({ title: "Addon deactivated" });
+    refetch();
+  };
+
+  const handleGrant = async () => {
+    if (!viewingSubs || !grantUserId) return;
+    setGranting(true);
+    try {
+      const r = await fetch(`/api/admin/users/${grantUserId}/addons`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...A() },
+        body: JSON.stringify({ addonId: viewingSubs.id, expiresAt: grantExpiry || undefined }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "Failed");
+      toast({ title: "Addon granted" });
+      setGrantUserId(""); setGrantExpiry("");
+      refetchSubs();
+    } catch (err: any) {
+      toast({ title: err.message, variant: "destructive" });
+    } finally { setGranting(false); }
+  };
+
+  const handleRevoke = async (sub: AddonSubscriber) => {
+    if (!viewingSubs) return;
+    if (!confirm(`Revoke addon from ${sub.userName}?`)) return;
+    await fetch(`/api/admin/users/${sub.userId}/addons/${viewingSubs.id}`, { method: "DELETE", headers: A() });
+    toast({ title: "Addon revoked" });
+    refetchSubs();
+  };
+
+  const addons = data?.addons ?? [];
+
+  return (
+    <div className="p-8 space-y-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-white tracking-tight">Add-on Management</h2>
+          <p className="text-sm text-zinc-500 mt-1">Manage feature/credit/limit add-ons available to users</p>
+        </div>
+        <button onClick={openCreate}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-sm font-black uppercase tracking-widest transition-all">
+          <Plus className="w-4 h-4" /> New Addon
+        </button>
+      </div>
+
+      {/* Addons table */}
+      {isLoading ? (
+        <div className="space-y-3">{Array.from({length:3}).map((_,i) => <div key={i} className="h-16 rounded-xl bg-white/[0.03] animate-pulse"/>)}</div>
+      ) : addons.length === 0 ? (
+        <div className="text-center py-16 rounded-2xl border border-dashed border-white/10">
+          <Package className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
+          <p className="text-zinc-500">No add-ons yet. Create your first one.</p>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/5 overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="border-white/5 hover:bg-transparent">
+                {["Name", "Type", "Price", "Recurring", "Subscribers", "Status", "Actions"].map(h => (
+                  <TableHead key={h} className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{h}</TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {addons.map(a => (
+                <TableRow key={a.id} className="border-white/5 hover:bg-white/[0.02]">
+                  <TableCell>
+                    <div className="font-bold text-white text-sm">{a.name}</div>
+                    <div className="text-[10px] text-zinc-500 font-mono">{a.slug}</div>
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn("px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest",
+                      a.type === "feature" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20"
+                      : a.type === "credits" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                    )}>
+                      {a.type === "feature" ? "✨ Feature" : a.type === "credits" ? "🪙 Credits" : "📈 Limit"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-white font-bold font-mono">${a.price}</span>
+                    {a.is_recurring && <span className="text-[10px] text-zinc-500">/mo</span>}
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn("text-[10px] font-black px-2 py-1 rounded-lg border",
+                      a.is_recurring ? "text-blue-400 bg-blue-500/10 border-blue-500/20" : "text-zinc-400 bg-zinc-500/10 border-zinc-500/20"
+                    )}>
+                      {a.is_recurring ? "Monthly" : "One-time"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <button onClick={() => setViewingSubs(a)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-bold transition-all">
+                      <Users className="w-3 h-3" /> {a.subscriber_count}
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    <span className={cn("text-[10px] font-black px-2 py-1 rounded-lg border",
+                      a.is_active ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" : "text-zinc-500 bg-zinc-500/10 border-zinc-500/20"
+                    )}>
+                      {a.is_active ? "Active" : "Inactive"}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => openEdit(a)}
+                        className="p-1.5 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white transition-all">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      {a.is_active && (
+                        <button onClick={() => handleDeactivate(a.id)}
+                          className="p-1.5 rounded-lg hover:bg-rose-500/10 text-zinc-400 hover:text-rose-400 transition-all">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      {/* Create/Edit Dialog */}
+      <Dialog open={creating} onOpenChange={v => { if (!v) { setCreating(false); setEditing(null); } }}>
+        <DialogContent className="bg-zinc-950 border-white/10 max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-white font-black">{editing ? "Edit Add-on" : "Create Add-on"}</DialogTitle>
+            <DialogDescription className="text-zinc-500">Configure the add-on details</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-zinc-400">Name</Label>
+                <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="AI Image Generation" className="bg-black/60 border-white/10 text-white" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-zinc-400">Slug</Label>
+                <Input value={form.slug} onChange={e => setForm(f => ({ ...f, slug: e.target.value }))}
+                  placeholder="ai_image_generation" className="bg-black/60 border-white/10 text-white font-mono text-sm" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-zinc-400">Type</Label>
+                <Select value={form.type} onValueChange={v => setForm(f => ({ ...f, type: v }))}>
+                  <SelectTrigger className="bg-black/60 border-white/10 text-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ADDON_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.icon} {t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-zinc-400">Price ($)</Label>
+                <Input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))}
+                  className="bg-black/60 border-white/10 text-white font-mono" />
+              </div>
+            </div>
+
+            {form.type === "feature" && (
+              <div className="space-y-1">
+                <Label className="text-xs text-zinc-400">Feature Key (column in plans table)</Label>
+                <Input value={form.feature_key} onChange={e => setForm(f => ({ ...f, feature_key: e.target.value }))}
+                  placeholder="has_ai_image_generation" className="bg-black/60 border-white/10 text-white font-mono text-sm" />
+              </div>
+            )}
+            {form.type === "credits" && (
+              <div className="space-y-1">
+                <Label className="text-xs text-zinc-400">Credits Amount</Label>
+                <Input type="number" value={form.credits_amount} onChange={e => setForm(f => ({ ...f, credits_amount: Number(e.target.value) }))}
+                  className="bg-black/60 border-white/10 text-white font-mono" />
+              </div>
+            )}
+            {form.type === "limit" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs text-zinc-400">Limit Key</Label>
+                  <Input value={form.limit_key} onChange={e => setForm(f => ({ ...f, limit_key: e.target.value }))}
+                    placeholder="max_sites" className="bg-black/60 border-white/10 text-white font-mono text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-zinc-400">Limit Value</Label>
+                  <Input type="number" value={form.limit_value} onChange={e => setForm(f => ({ ...f, limit_value: Number(e.target.value) }))}
+                    className="bg-black/60 border-white/10 text-white font-mono" />
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.is_recurring} onChange={e => setForm(f => ({ ...f, is_recurring: e.target.checked }))}
+                  className="w-4 h-4 accent-purple-500" />
+                <span className="text-sm text-zinc-300">Recurring (monthly)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={form.is_active} onChange={e => setForm(f => ({ ...f, is_active: e.target.checked }))}
+                  className="w-4 h-4 accent-emerald-500" />
+                <span className="text-sm text-zinc-300">Active (visible)</span>
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => { setCreating(false); setEditing(null); }}>Cancel</Button>
+            <Button onClick={handleSave} disabled={saving}
+              className="bg-purple-600 hover:bg-purple-500 text-white font-black">
+              {saving ? "Saving…" : (editing ? "Update" : "Create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Subscribers Dialog */}
+      <Dialog open={!!viewingSubs} onOpenChange={v => { if (!v) setViewingSubs(null); }}>
+        <DialogContent className="bg-zinc-950 border-white/10 max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-white font-black">Subscribers — {viewingSubs?.name}</DialogTitle>
+            <DialogDescription className="text-zinc-500">Users with this addon active</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {/* Grant to user */}
+            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 space-y-3">
+              <p className="text-xs font-black text-zinc-500 uppercase tracking-widest">Grant to User</p>
+              <div className="flex gap-2">
+                <Input value={grantUserId} onChange={e => setGrantUserId(e.target.value)}
+                  placeholder="User ID" className="bg-black/60 border-white/10 text-white font-mono w-28" />
+                <Input value={grantExpiry} onChange={e => setGrantExpiry(e.target.value)}
+                  type="date" placeholder="Expiry (optional)"
+                  className="bg-black/60 border-white/10 text-white flex-1" />
+                <Button onClick={handleGrant} disabled={granting || !grantUserId}
+                  className="bg-purple-600 hover:bg-purple-500 text-white font-black shrink-0">
+                  {granting ? "…" : "Grant"}
+                </Button>
+              </div>
+            </div>
+
+            {/* Subscriber list */}
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {(subData?.subscribers ?? []).length === 0 ? (
+                <div className="text-center py-8 text-zinc-500 text-sm">No subscribers yet</div>
+              ) : (
+                (subData?.subscribers ?? []).map(sub => (
+                  <div key={sub.userAddonId} className={cn(
+                    "flex items-center justify-between p-3 rounded-xl border",
+                    sub.isActive ? "border-white/5 bg-white/[0.02]" : "border-white/5 bg-zinc-900/50 opacity-60"
+                  )}>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 font-black text-xs">
+                        {sub.userName?.charAt(0)?.toUpperCase() ?? "U"}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-white">{sub.userName}</p>
+                        <p className="text-[10px] text-zinc-500">{sub.userEmail} · Plan: {sub.userPlan} · ID: {sub.userId}</p>
+                        <p className="text-[10px] text-zinc-600">
+                          Granted: {new Date(sub.purchasedAt).toLocaleDateString()}
+                          {sub.expiresAt && ` · Expires: ${new Date(sub.expiresAt).toLocaleDateString()}`}
+                        </p>
+                      </div>
+                    </div>
+                    {sub.isActive && (
+                      <button onClick={() => handleRevoke(sub)}
+                        className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 text-[10px] font-black uppercase tracking-widest hover:bg-rose-500/20 transition-all">
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 // ─── Points Tab ───────────────────────────────────────────────────────────────
 function PointsTab() {
   const { data: settingsData, isLoading } = useAdminSettings();
   const settings = settingsData?.settings ?? {};
   const [config, setConfig] = useState({
     points_price_per_unit: "2",
-    points_burn_per_article: "1",
+    points_burn_per_article: "5",
+    points_burn_per_card: "1",
     points_min_purchase: "10",
     points_system_enabled: "true",
   });
@@ -1017,7 +1406,8 @@ function PointsTab() {
     if (settingsData && !loaded) {
       setConfig({
         points_price_per_unit: settings.points_price_per_unit || "2",
-        points_burn_per_article: settings.points_burn_per_article || "1",
+        points_burn_per_article: settings.points_burn_per_article || "5",
+        points_burn_per_card: settings.points_burn_per_card || "1",
         points_min_purchase: settings.points_min_purchase || "10",
         points_system_enabled: settings.points_system_enabled || "true",
       });
@@ -1084,6 +1474,16 @@ function PointsTab() {
             Consumption
           </h3>
           <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase text-zinc-500">Points Burned per News Card</Label>
+              <Input
+                type="number" min={0}
+                value={config.points_burn_per_card}
+                onChange={(e) => setConfig({ ...config, points_burn_per_card: e.target.value })}
+                className="bg-black border-white/10 h-12 rounded-xl font-mono"
+              />
+              <p className="text-[10px] text-zinc-600">0 = Free card generation</p>
+            </div>
             <div className="space-y-1.5">
               <Label className="text-[10px] font-black uppercase text-zinc-500">Points Burned per Article</Label>
               <Input
@@ -3014,6 +3414,7 @@ export function BlogAdmin() {
           {activeTab === "payments"   && <PaymentsTab />}
           {activeTab === "plans"      && <PlansTab />}
           {activeTab === "points"     && <PointsTab />}
+          {activeTab === "addons"     && <AddonManagementTab />}
           {activeTab === "images"     && <ImageGalleryTab />}
           {activeTab === "templates"  && <TemplatesManagementTab />}
           {activeTab === "channels"   && <ChannelsTab />}

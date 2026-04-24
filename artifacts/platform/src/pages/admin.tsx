@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 
-type PlanSlug = "free" | "starter" | "pro" | "agency";
+type PlanSlug = "free" | "starter" | "pro" | "business";
 interface AdminUser {
   id: number; name: string; email: string; plan: PlanSlug;
-  imagesToday: number; totalImages: number; isAdmin: boolean;
+  daily_usage_count: number; totalImages: number; isAdmin: boolean;
   botCode: string | null; createdAt: string;
 }
 interface Stats {
@@ -16,11 +16,15 @@ interface AdminImage {
   userName: string | null; userEmail: string | null;
 }
 interface AdminPlan {
-  id: number; name: string; slug: string; priceMonthly: number;
-  priceYearly: number; cardsPerDay: number; maxTemplates: number;
-  maxSavedDesigns: number; apiAccess: boolean; telegramBot: boolean;
-  overlayUpload: boolean; customWatermark: boolean;
-  isActive: boolean; sortOrder: number;
+  id: number; name: string; slug: string; description: string | null;
+  price_monthly: number; price_yearly: number;
+  monthly_credits: number; rate_limit_daily: number;
+  max_templates: number; max_saved_designs: number; max_sites: number;
+  has_api_access: boolean; has_telegram_bot: boolean;
+  has_overlay_upload: boolean; has_custom_watermark: boolean;
+  has_blog_automation: boolean; has_image_generator: boolean;
+  has_priority_support: boolean; has_priority_processing: boolean;
+  is_active: boolean; is_free: boolean; sort_order: number;
 }
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
@@ -100,7 +104,7 @@ export default function Admin() {
   const [stats, setStats]             = useState<Stats | null>(null);
   const [users, setUsers]             = useState<AdminUser[]>([]);
   const [images, setImages]           = useState<AdminImage[]>([]);
-  const [activeTab, setActiveTab]     = useState<"stats" | "users" | "images" | "plans" | "bot" | "whatsapp" | "templates" | "settings">("stats");
+  const [activeTab, setActiveTab]     = useState<"stats" | "users" | "images" | "plans" | "bot" | "whatsapp" | "templates" | "settings" | "payments">("stats");
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingId, setUpdatingId]   = useState<number | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
@@ -183,6 +187,24 @@ export default function Admin() {
   interface PendingTmpl { id: number; name: string; userId: number; category: string; bannerColor: string; bannerGradient: string | null; textColor: string; font: string; createdAt: string; }
   const [pendingTmpls, setPendingTmpls]     = useState<PendingTmpl[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
+
+  // ── Payment requests state ──
+  interface PayReq {
+    id: number; userId: number; type: string;
+    planId: number | null; pointsAmount: number | null;
+    paymentMethod: string; proofDetails: string;
+    status: string; adminNotes: string | null;
+    createdAt: string; updatedAt: string;
+    userName: string | null; userEmail: string | null; userPlan: string | null;
+    planName: string | null; planSlug: string | null;
+  }
+  const [payReqs, setPayReqs]               = useState<PayReq[]>([]);
+  const [payFilter, setPayFilter]           = useState<"all" | "pending" | "approved" | "rejected">("pending");
+  const [payLoading, setPayLoading]         = useState(false);
+  const [payActionId, setPayActionId]       = useState<number | null>(null);
+  const [payNotes, setPayNotes]             = useState<Record<number, string>>({});
+  const [payMsg, setPayMsg]                 = useState<{ type: "ok"|"err"; text: string } | null>(null);
+  const [expandedProof, setExpandedProof]   = useState<number | null>(null);
   const [approvalMsg, setApprovalMsg]       = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
   const authHeaders = useCallback(() => ({
@@ -446,6 +468,42 @@ export default function Admin() {
   useEffect(() => {
     if (token && activeTab === "templates") { loadSysTmpls(); loadPendingTmpls(); }
   }, [token, activeTab, loadSysTmpls, loadPendingTmpls]);
+
+  const loadPayReqs = async (filter: "all"|"pending"|"approved"|"rejected" = "pending") => {
+    if (!token) return;
+    setPayLoading(true); setPayMsg(null);
+    try {
+      const qs = filter === "all" ? "" : `?status=${filter}`;
+      const r = await fetch(`/api/admin/payments${qs}`, { cache: "no-store", headers: { Authorization: `Bearer ${token}` } });
+      if (r.ok) { const d = await r.json(); setPayReqs(d.requests ?? []); }
+      else setPayMsg({ type: "err", text: "Failed to load payment requests" });
+    } catch { setPayMsg({ type: "err", text: "Network error" }); }
+    finally { setPayLoading(false); }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === "payments") { loadPayReqs(payFilter); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, activeTab, payFilter]);
+
+  const handlePayAction = async (id: number, action: "approve" | "deny") => {
+    setPayActionId(id); setPayMsg(null);
+    try {
+      const r = await fetch(`/api/admin/payments/${id}/${action}`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ adminNotes: payNotes[id] ?? "" }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        setPayMsg({ type: "ok", text: action === "approve" ? "✅ Request approved successfully" : "🚫 Request rejected" });
+        loadPayReqs(payFilter);
+      } else {
+        setPayMsg({ type: "err", text: d.error ?? "Action failed" });
+      }
+    } catch { setPayMsg({ type: "err", text: "Network error" }); }
+    finally { setPayActionId(null); }
+  };
 
   const handleApprove = async (id: number) => {
     setApprovalMsg(null);
@@ -722,6 +780,7 @@ export default function Admin() {
       label: "Business",
       items: [
         { id: "plans",     label: "Plans",          icon: "◆" },
+        { id: "payments",  label: "Payments",        icon: "💳" },
         { id: "bot",       label: "Telegram Bot",    icon: "◉" },
         { id: "whatsapp",  label: "WhatsApp Bot",       icon: "◈" },
       ],
@@ -737,11 +796,11 @@ export default function Admin() {
   const TAB_TITLES: Record<string, string> = {
     stats: "Dashboard", users: "Users", images: "Images",
     templates: "Templates", plans: "Plans", bot: "Telegram Bot",
-    whatsapp: "WhatsApp Bot", settings: "Settings",
+    whatsapp: "WhatsApp Bot", settings: "Settings", payments: "Payment Requests",
   };
   const TAB_ICONS: Record<string, string> = {
     stats: "◈", users: "◎", images: "▣", templates: "◻", plans: "◆",
-    bot: "◉", whatsapp: "◈", settings: "◌",
+    bot: "◉", whatsapp: "◈", settings: "◌", payments: "💳",
   };
 
   const cardStyle: React.CSSProperties = {
@@ -844,6 +903,13 @@ export default function Admin() {
                         background: "rgba(139,92,246,0.1)", color: ACCENT3,
                         fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 99,
                       }}>{sysTmpls.length}</span>
+                    )}
+                    {item.id === "payments" && payReqs.filter(r => r.status === "pending").length > 0 && (
+                      <span style={{
+                        marginLeft: "auto", marginRight: 0,
+                        background: "rgba(245,158,11,0.2)", color: AMBER,
+                        fontSize: 10, fontWeight: 800, padding: "1px 7px", borderRadius: 99,
+                      }}>{payReqs.filter(r => r.status === "pending").length}</span>
                     )}
                   </button>
                 );
@@ -958,6 +1024,7 @@ export default function Admin() {
                 {activeTab === "bot" && "Connect and manage Telegram bot"}
                 {activeTab === "whatsapp" && "Connect WhatsApp bot via QR Code"}
                 {activeTab === "settings" && "System settings and homepage"}
+                {activeTab === "payments" && `${payReqs.length} ${payFilter === "all" ? "total" : payFilter} requests`}
               </p>
             </div>
           </div>
@@ -1000,7 +1067,7 @@ export default function Admin() {
                 {[
                   { label: "Images / User", value: stats.totalUsers ? (stats.totalImages / stats.totalUsers).toFixed(1) : "0" },
                   { label: "Today's Images",    value: stats.todayImages },
-                  { label: "Active Today",  value: users.filter(u => u.imagesToday > 0).length },
+                  { label: "Active Today",  value: users.filter(u => u.daily_usage_count > 0).length },
                 ].map(row => (
                   <div key={row.label} style={{
                     display: "flex", justifyContent: "space-between",
@@ -1079,7 +1146,7 @@ export default function Admin() {
                         </span>
                       </td>
                       <td style={{ padding: "12px 16px", fontWeight: 700, color: TEXT }}>{u.totalImages}</td>
-                      <td style={{ padding: "12px 16px", color: u.imagesToday > 0 ? GREEN : MUTED, fontWeight: 600 }}>{u.imagesToday}</td>
+                      <td style={{ padding: "12px 16px", color: u.daily_usage_count > 0 ? GREEN : MUTED, fontWeight: 600 }}>{u.daily_usage_count}</td>
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                           {updatingId === u.id ? (
@@ -1159,7 +1226,7 @@ export default function Admin() {
         {activeTab === "plans" && (
           <div>
             <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
-              <button onClick={() => setEditingPlan({ id: -1, name: "", slug: "", priceMonthly: 0, priceYearly: 0, cardsPerDay: 10, maxTemplates: 3, maxSavedDesigns: 5, apiAccess: false, telegramBot: false, overlayUpload: false, customWatermark: false, isActive: true, sortOrder: adminPlans.length })}
+              <button onClick={() => setEditingPlan({ id: -1, name: "", slug: "", description: null, price_monthly: 0, price_yearly: 0, monthly_credits: 30, rate_limit_daily: 10, max_templates: 3, max_saved_designs: 5, max_sites: 0, has_api_access: false, has_telegram_bot: false, has_overlay_upload: false, has_custom_watermark: false, has_blog_automation: false, has_image_generator: true, has_priority_support: false, has_priority_processing: false, is_active: true, is_free: false, sort_order: adminPlans.length })}
                 style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`, color: "#fff", border: "none", padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
                 + Add New Plan
               </button>
@@ -1169,7 +1236,7 @@ export default function Admin() {
               {adminPlans.map(plan => (
                 <div key={plan.id} style={{
                   ...cardStyle,
-                  borderColor: plan.isActive ? "rgba(99,102,241,0.2)" : BORDER,
+                  borderColor: plan.is_active ? "rgba(99,102,241,0.2)" : BORDER,
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div>
@@ -1177,14 +1244,15 @@ export default function Admin() {
                       <span style={{ fontFamily: "monospace", fontSize: 11, color: MUTED, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, padding: "2px 8px", borderRadius: 6 }}>{plan.slug}</span>
                     </div>
                     <div style={{ textAlign: "left" }}>
-                      <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>${plan.priceMonthly}<span style={{ fontSize: 12, color: MUTED }}>/mo</span></div>
+                      <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>${plan.price_monthly}<span style={{ fontSize: 12, color: MUTED }}>/mo</span></div>
                     </div>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
                     {[
-                      { label: "Cards/day", value: plan.cardsPerDay === -1 ? "∞" : plan.cardsPerDay },
-                      { label: "API", value: plan.apiAccess ? "✓" : "✗" },
-                      { label: "Telegram Bot", value: plan.telegramBot ? "✓" : "✗" },
+                      { label: "Credits/mo", value: plan.monthly_credits >= 999 ? "∞" : plan.monthly_credits },
+                      { label: "Daily limit", value: plan.rate_limit_daily >= 999 ? "∞" : plan.rate_limit_daily },
+                      { label: "API", value: plan.has_api_access ? "✓" : "✗" },
+                      { label: "Telegram Bot", value: plan.has_telegram_bot ? "✓" : "✗" },
                     ].map(row => (
                       <div key={row.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                         <span style={{ color: MUTED }}>{row.label}</span>
@@ -1211,10 +1279,14 @@ export default function Admin() {
                     {[
                       { label: "Name", field: "name", type: "text" },
                       { label: "Slug", field: "slug", type: "text" },
-                      { label: "Monthly Price ($)", field: "priceMonthly", type: "number" },
-                      { label: "Yearly Price ($)", field: "priceYearly", type: "number" },
-                      { label: "Cards/day (-1=∞)", field: "cardsPerDay", type: "number" },
-                      { label: "Max Templates", field: "maxTemplates", type: "number" },
+                      { label: "Monthly Price ($)", field: "price_monthly", type: "number" },
+                      { label: "Yearly Price ($)", field: "price_yearly", type: "number" },
+                      { label: "Credits/month", field: "monthly_credits", type: "number" },
+                      { label: "Daily limit (999=∞)", field: "rate_limit_daily", type: "number" },
+                      { label: "Max Templates", field: "max_templates", type: "number" },
+                      { label: "Max Saved Designs", field: "max_saved_designs", type: "number" },
+                      { label: "Max Sites", field: "max_sites", type: "number" },
+                      { label: "Sort Order", field: "sort_order", type: "number" },
                     ].map(f => (
                       <div key={f.field}>
                         <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6, fontWeight: 600 }}>{f.label}</label>
@@ -1232,11 +1304,16 @@ export default function Admin() {
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
                     {[
-                      { label: "API Access",       field: "apiAccess" },
-                      { label: "Telegram Bot",      field: "telegramBot" },
-                      { label: "Overlay Upload",    field: "overlayUpload" },
-                      { label: "Custom Watermark", field: "customWatermark" },
-                      { label: "Active",               field: "isActive" },
+                      { label: "Image Generator",    field: "has_image_generator" },
+                      { label: "Blog Automation",    field: "has_blog_automation" },
+                      { label: "API Access",          field: "has_api_access" },
+                      { label: "Telegram Bot",        field: "has_telegram_bot" },
+                      { label: "Overlay Upload",      field: "has_overlay_upload" },
+                      { label: "Custom Watermark",   field: "has_custom_watermark" },
+                      { label: "Priority Processing", field: "has_priority_processing" },
+                      { label: "Priority Support",    field: "has_priority_support" },
+                      { label: "Is Free Plan",        field: "is_free" },
+                      { label: "Active",              field: "is_active" },
                     ].map(f => (
                       <label key={f.field} style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, color: TEXT }}>
                         <input type="checkbox" checked={(editingPlan as any)[f.field]}
@@ -2203,7 +2280,7 @@ export default function Admin() {
                   <div style={{ padding: "14px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 12, border: `1px solid ${BORDER}` }}>
                     <div style={{ fontSize: 12, color: TEXT, fontWeight: 700, marginBottom: 14 }}>🔗 "Start Now" button links per plan</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {adminPlans.filter(p => p.isActive).map(plan => (
+                      {adminPlans.filter(p => p.is_active).map(plan => (
                         <div key={plan.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10, alignItems: "center" }}>
                           <div style={{ fontSize: 12, color: MUTED, fontWeight: 600 }}>
                             {plan.name} <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 10 }}>({plan.slug})</span>
@@ -2225,17 +2302,19 @@ export default function Admin() {
                   <div style={{ padding: "14px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 12, border: `1px solid ${BORDER}` }}>
                     <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, marginBottom: 12 }}>👁 Plan features preview (auto-fetched)</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {adminPlans.filter(p => p.isActive).map(plan => (
+                      {adminPlans.filter(p => p.is_active).map(plan => (
                         <div key={plan.id} style={{ padding: "10px 14px", background: "rgba(255,255,255,0.02)", borderRadius: 8, border: `1px solid ${BORDER}` }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>{plan.name} — <span style={{ color: MUTED, fontFamily: "monospace" }}>${plan.priceMonthly}/mo</span></div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>{plan.name} — <span style={{ color: MUTED, fontFamily: "monospace" }}>${plan.price_monthly}/mo</span></div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                             {[
-                              plan.cardsPerDay === -1 ? "∞ cards" : `${plan.cardsPerDay} cards/day`,
-                              plan.maxTemplates === -1 ? "All templates" : `${plan.maxTemplates} templates`,
-                              plan.apiAccess && "API",
-                              plan.telegramBot && "Telegram Bot",
-                              plan.overlayUpload && "Overlay upload",
-                              plan.customWatermark && "Custom watermark",
+                              `${plan.monthly_credits >= 999 ? "∞" : plan.monthly_credits} credits/mo`,
+                              `${plan.rate_limit_daily >= 999 ? "∞" : plan.rate_limit_daily}/day limit`,
+                              plan.max_templates > 0 && `${plan.max_templates === -1 ? "All" : plan.max_templates} templates`,
+                              plan.has_api_access && "API",
+                              plan.has_telegram_bot && "Telegram Bot",
+                              plan.has_overlay_upload && "Overlay upload",
+                              plan.has_custom_watermark && "Custom watermark",
+                              plan.has_blog_automation && "Blog automation",
                             ].filter(Boolean).map((f, i) => (
                               <span key={i} style={{ fontSize: 11, color: ACCENT2, background: "rgba(34,211,238,0.06)", padding: "2px 8px", borderRadius: 99, border: "1px solid rgba(34,211,238,0.15)" }}>{f}</span>
                             ))}
@@ -2270,6 +2349,156 @@ export default function Admin() {
             )}
           </div>
 
+          </div>
+        )}
+
+        {/* ══════════ PAYMENTS TAB ══════════ */}
+        {activeTab === "payments" && (
+          <div style={{ maxWidth: 900, display: "flex", flexDirection: "column", gap: 20 }}>
+
+            {/* Filter bar */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              {(["pending", "approved", "rejected", "all"] as const).map(f => (
+                <button key={f} onClick={() => setPayFilter(f)} style={{
+                  padding: "7px 18px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  cursor: "pointer", fontFamily: "'Inter', sans-serif",
+                  border: payFilter === f ? "1px solid rgba(99,102,241,0.5)" : `1px solid ${BORDER}`,
+                  background: payFilter === f ? "rgba(99,102,241,0.15)" : SURFACE,
+                  color: payFilter === f ? ACCENT : MUTED,
+                  transition: "all 0.15s",
+                }}>
+                  {f === "pending" ? "⏳ Pending" : f === "approved" ? "✅ Approved" : f === "rejected" ? "❌ Rejected" : "🗂 All"}
+                </button>
+              ))}
+              <button onClick={() => loadPayReqs(payFilter)} style={{
+                marginLeft: "auto", padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: "'Inter', sans-serif",
+                border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED,
+              }}>🔄 Refresh</button>
+            </div>
+
+            {payMsg && (
+              <div style={{ padding: "11px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                background: payMsg.type === "ok" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
+                color: payMsg.type === "ok" ? GREEN : RED,
+                border: `1px solid ${payMsg.type === "ok" ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+              }}>{payMsg.text}</div>
+            )}
+
+            {payLoading ? (
+              <div style={{ textAlign: "center", color: MUTED, padding: 40 }}>Loading...</div>
+            ) : payReqs.length === 0 ? (
+              <div style={{ ...cardStyle, textAlign: "center", padding: 48, color: MUTED }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>📭</div>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>No {payFilter === "all" ? "" : payFilter} payment requests</div>
+              </div>
+            ) : payReqs.map(req => {
+              const isPending = req.status === "pending";
+              const statusColor = req.status === "approved" ? GREEN : req.status === "rejected" ? RED : AMBER;
+              const isProofImage = req.proofDetails?.startsWith("data:image");
+              return (
+                <div key={req.id} style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 14 }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
+                    {/* Left info */}
+                    <div style={{ flex: 1, minWidth: 220 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>#{req.id}</span>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 99,
+                          background: req.status === "approved" ? "rgba(34,197,94,0.1)" : req.status === "rejected" ? "rgba(239,68,68,0.1)" : "rgba(245,158,11,0.1)",
+                          color: statusColor, border: `1px solid ${statusColor}40`,
+                        }}>{req.status.toUpperCase()}</span>
+                        <span style={{ fontSize: 11, color: MUTED, marginLeft: "auto" }}>
+                          {new Date(req.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 4 }}>
+                        {req.type === "plan_upgrade" ? `Plan upgrade → ${req.planName ?? req.planSlug ?? `Plan #${req.planId}`}` : `Points purchase: +${req.pointsAmount?.toLocaleString()} credits`}
+                      </div>
+                      <div style={{ fontSize: 12, color: MUTED }}>
+                        👤 {req.userName ?? "Unknown"} &nbsp;·&nbsp; {req.userEmail ?? "no email"} &nbsp;·&nbsp; Current plan: <span style={{ color: ACCENT }}>{req.userPlan}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                        💳 Payment method: <span style={{ color: TEXT, fontWeight: 600 }}>{req.paymentMethod}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Proof of payment */}
+                  <div>
+                    <button onClick={() => setExpandedProof(expandedProof === req.id ? null : req.id)} style={{
+                      padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                      border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED,
+                      cursor: "pointer", fontFamily: "'Inter', sans-serif",
+                    }}>
+                      {expandedProof === req.id ? "▲ Hide Proof" : "▼ View Payment Proof"}
+                    </button>
+                    {expandedProof === req.id && (
+                      <div style={{ marginTop: 12, padding: "14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}` }}>
+                        {isProofImage ? (
+                          <img src={req.proofDetails} alt="Payment proof" style={{ maxWidth: "100%", maxHeight: 400, borderRadius: 8, objectFit: "contain" }} />
+                        ) : (
+                          <pre style={{ margin: 0, fontSize: 12, color: TEXT, whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.6 }}>{req.proofDetails}</pre>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Admin notes + action buttons */}
+                  {isPending && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
+                      <textarea
+                        placeholder="Admin notes (optional)..."
+                        value={payNotes[req.id] ?? ""}
+                        onChange={e => setPayNotes(prev => ({ ...prev, [req.id]: e.target.value }))}
+                        rows={2}
+                        style={{
+                          width: "100%", padding: "10px 14px", borderRadius: 8, fontSize: 13,
+                          background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`,
+                          color: TEXT, fontFamily: "'Inter', sans-serif", resize: "vertical",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button
+                          disabled={payActionId === req.id}
+                          onClick={() => handlePayAction(req.id, "approve")}
+                          style={{
+                            padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                            cursor: payActionId === req.id ? "not-allowed" : "pointer",
+                            fontFamily: "'Inter', sans-serif",
+                            background: payActionId === req.id ? "rgba(34,197,94,0.05)" : "rgba(34,197,94,0.12)",
+                            border: "1px solid rgba(34,197,94,0.3)", color: GREEN,
+                            opacity: payActionId === req.id ? 0.6 : 1,
+                          }}>
+                          {payActionId === req.id ? "Processing..." : "✅ Approve"}
+                        </button>
+                        <button
+                          disabled={payActionId === req.id}
+                          onClick={() => handlePayAction(req.id, "deny")}
+                          style={{
+                            padding: "9px 22px", borderRadius: 8, fontSize: 13, fontWeight: 700,
+                            cursor: payActionId === req.id ? "not-allowed" : "pointer",
+                            fontFamily: "'Inter', sans-serif",
+                            background: payActionId === req.id ? "rgba(239,68,68,0.05)" : "rgba(239,68,68,0.1)",
+                            border: "1px solid rgba(239,68,68,0.25)", color: RED,
+                            opacity: payActionId === req.id ? 0.6 : 1,
+                          }}>
+                          ❌ Reject
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Show admin notes if already processed */}
+                  {!isPending && req.adminNotes && (
+                    <div style={{ fontSize: 12, color: MUTED, paddingTop: 8, borderTop: `1px solid ${BORDER}` }}>
+                      <span style={{ fontWeight: 700, color: TEXT }}>Admin notes:</span> {req.adminNotes}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

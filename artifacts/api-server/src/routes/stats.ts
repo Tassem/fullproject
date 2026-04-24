@@ -1,28 +1,30 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { generatedImagesTable, articlesTable, sitesTable, pipelineLogsTable, usersTable, templatesTable } from "@workspace/db";
+import { generatedImagesTable, articlesTable, sitesTable, pipelineLogsTable, usersTable, templatesTable, plansTable } from "@workspace/db";
 import { eq, and, gte, count, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
 const router = Router();
 
-// GET /stats → operationId: getStats (news-card-pro dashboard)
 router.get("/", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.slug, user.plan)).limit(1);
 
   const [totalImagesRow] = await db.select({ count: count() }).from(generatedImagesTable).where(eq(generatedImagesTable.userId, user.id));
   const [totalTemplatesRow] = await db.select({ count: count() }).from(templatesTable).where(eq(templatesTable.userId, user.id));
 
   return res.json({
     totalImages: Number(totalImagesRow.count),
-    imagesToday: user.imagesToday,
+    daily_usage: user.daily_usage_count ?? 0,
+    daily_limit: plan?.rate_limit_daily ?? 50,
     totalTemplates: Number(totalTemplatesRow.count),
     plan: user.plan,
-    dailyLimit: 20,
+    monthly_credits: user.monthly_credits ?? 0,
+    purchased_credits: user.purchased_credits ?? 0,
+    total_credits: (user.monthly_credits ?? 0) + (user.purchased_credits ?? 0),
   });
 });
 
-// GET /stats/overview → operationId: getStatsOverview (blog automation dashboard)
 router.get("/overview", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
 
@@ -50,8 +52,7 @@ router.get("/overview", requireAuth, async (req, res) => {
   return res.json({ total_articles: total, done, failed, pending, processing, published_today: publishedToday, success_rate: successRate });
 });
 
-// GET /stats/pipeline → operationId: getPipelineStats
-router.get("/pipeline", requireAuth, async (req, res) => {
+router.get("/pipeline", requireAuth, async (_req, res) => {
   const logs = await db.select().from(pipelineLogsTable).orderBy(desc(pipelineLogsTable.created_at)).limit(500);
 
   const stages: Record<string, { success: number; failure: number; durations: number[] }> = {};
@@ -75,11 +76,9 @@ router.get("/pipeline", requireAuth, async (req, res) => {
   return res.json({ avg_duration_ms: avgDuration, stages: stageStats });
 });
 
-// GET /stats/recent-activity → operationId: getRecentActivity
-router.get("/recent-activity", requireAuth, async (req, res) => {
+router.get("/recent-activity", requireAuth, async (_req, res) => {
   const recentLogs = await db.select().from(pipelineLogsTable)
-    .orderBy(desc(pipelineLogsTable.created_at))
-    .limit(20);
+    .orderBy(desc(pipelineLogsTable.created_at)).limit(20);
 
   return res.json(recentLogs.map(log => ({
     id: log.id,
@@ -92,9 +91,9 @@ router.get("/recent-activity", requireAuth, async (req, res) => {
   })));
 });
 
-// Legacy dashboard endpoint (backwards compat)
 router.get("/dashboard", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
+  const [plan] = await db.select().from(plansTable).where(eq(plansTable.slug, user.plan)).limit(1);
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
@@ -103,12 +102,13 @@ router.get("/dashboard", requireAuth, async (req, res) => {
   const userSites = await db.select({ id: sitesTable.id }).from(sitesTable).where(eq(sitesTable.user_id, user.id));
 
   return res.json({
-    imagesToday: user.imagesToday,
+    daily_usage: user.daily_usage_count ?? 0,
+    daily_limit: plan?.rate_limit_daily ?? 50,
     imagesThisMonth: Number(imagesMonthRow.count),
     totalSites: userSites.length,
-    creditsBalance: user.credits,
-    cardsToday: user.imagesToday,
-    cardsLimit: 20,
+    monthly_credits: user.monthly_credits ?? 0,
+    purchased_credits: user.purchased_credits ?? 0,
+    total_credits: (user.monthly_credits ?? 0) + (user.purchased_credits ?? 0),
     totalImages: Number(totalImagesRow.count),
   });
 });

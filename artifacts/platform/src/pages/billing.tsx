@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   CreditCard, Zap, Globe, FileText, TrendingUp,
   Calendar, ChevronRight, Star, Check, Clock, ArrowUpRight,
-  History, AlertCircle, RefreshCw, XCircle,
+  History, AlertCircle, RefreshCw, XCircle, Package,
+  Sparkles, Coins, Layers, X, Loader2, Puzzle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -17,33 +18,42 @@ const AUTH = () => ({ Authorization: `Bearer ${localStorage.getItem("pro_token")
 interface BillingStatus {
   plan: {
     id: number; name: string; displayName: string;
-    priceMonthly: number; priceYearly: number;
-    cardsPerDay: number; maxSites: number; articlesPerMonth: number;
-    hasTelegramBot: boolean; hasBlogAutomation: boolean;
-    hasImageGenerator: boolean; apiAccess: boolean;
-    overlayUpload: boolean; customWatermark: boolean;
-  };
+    price_monthly: number; price_yearly: number;
+    monthly_credits: number; max_sites: number;
+    rate_limit_daily: number;
+    has_telegram_bot: boolean; has_blog_automation: boolean;
+    has_image_generator: boolean; has_api_access: boolean;
+    has_overlay_upload: boolean; has_custom_watermark: boolean;
+    has_ai_image_generation: boolean;
+  } | null;
+  /** effective = plan + addons merged — use this for UI display */
+  effective: {
+    max_sites: number; max_templates: number | null;
+    max_saved_designs: number | null; rate_limit_daily: number;
+    has_ai_image_generation?: boolean; [key: string]: unknown;
+  } | null;
   subscription: {
     id: number; status: string;
     currentPeriodStart: string; currentPeriodEnd: string;
     cancelAtPeriodEnd: boolean;
   } | null;
   usage: {
-    articles: { used: number; max: number; unlimited: boolean; percentage: number };
-    sites:    { used: number; max: number; unlimited: boolean; percentage: number };
-    cards:    { used: number; max: number; unlimited: boolean; percentage: number };
-    credits:  { balance: number; points: number };
+    credits: {
+      monthly: number; purchased: number; total: number;
+      reset_date: string | null; daily_usage: number; daily_limit: number;
+    };
+    sites: { used: number; max: number; unlimited: boolean; percentage: number };
   };
 }
 
 interface Plan {
   id: number; name: string; slug: string;
-  priceMonthly: number; priceYearly: number;
-  cardsPerDay: number; maxSites: number; articlesPerMonth: number;
-  hasTelegramBot: boolean; hasBlogAutomation: boolean;
-  hasImageGenerator: boolean; apiAccess: boolean;
-  overlayUpload: boolean; customWatermark: boolean;
-  credits: number; isActive: boolean; sortOrder: number;
+  price_monthly: number; price_yearly: number;
+  monthly_credits: number; max_sites: number;
+  has_telegram_bot: boolean; has_blog_automation: boolean;
+  has_image_generator: boolean; has_api_access: boolean;
+  has_overlay_upload: boolean; has_custom_watermark: boolean;
+  is_active: boolean; sort_order: number;
 }
 
 interface PaymentRequest {
@@ -52,6 +62,131 @@ interface PaymentRequest {
   pointsAmount: number | null; paymentMethod: string;
   proofDetails: string; status: string; adminNotes: string | null;
   createdAt: string;
+}
+
+interface PlanAddon {
+  id: number; name: string; slug: string;
+  type: "feature" | "credits" | "limit";
+  credits_amount: number; feature_key: string | null;
+  limit_key: string | null; limit_value: number | null;
+  price: number; is_recurring: boolean; is_active: boolean;
+  subscriber_count?: number;
+}
+
+interface UserAddon {
+  id: number; addonId: number;
+  name: string; slug: string;
+  type: string; credits_amount: number;
+  feature_key: string | null; limit_key: string | null; limit_value: number | null;
+  price: number; is_recurring: boolean;
+  purchasedAt: string; expiresAt: string | null; isActive: boolean;
+}
+
+// ─── Addon Purchase Modal ──────────────────────────────────────────────────────
+function AddonPurchaseModal({
+  addon, open, onClose, onSuccess,
+}: { addon: PlanAddon; open: boolean; onClose: () => void; onSuccess: () => void }) {
+  const [method, setMethod] = useState<"paypal" | "bank_transfer">("paypal");
+  const [proof, setProof] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!proof.trim()) return;
+    setSubmitting(true);
+    try {
+      const r = await fetch("/api/addons/purchase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...AUTH() },
+        body: JSON.stringify({ addonId: addon.id, paymentMethod: method, proofDetails: proof }),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({})) as any;
+        throw new Error(e.message || e.error || "Request failed");
+      }
+      setDone(true);
+      onSuccess();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (!open) return null;
+
+  const typeIcon = addon.type === "feature" ? <Sparkles className="w-5 h-5 text-purple-400" />
+    : addon.type === "credits" ? <Coins className="w-5 h-5 text-amber-400" />
+    : <Layers className="w-5 h-5 text-blue-400" />;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-6 shadow-2xl">
+        <div className="flex items-start justify-between mb-5">
+          <div className="flex items-center gap-3">
+            {typeIcon}
+            <div>
+              <h3 className="text-base font-black text-white">{addon.name}</h3>
+              <p className="text-xs text-zinc-500">{addon.is_recurring ? "Monthly subscription" : "One-time purchase"}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {done ? (
+          <div className="text-center py-8">
+            <div className="text-4xl mb-3">✅</div>
+            <p className="text-white font-bold">Request Submitted!</p>
+            <p className="text-sm text-zinc-400 mt-1">Our team will review and activate within 24h.</p>
+            <button onClick={onClose} className="mt-5 px-6 py-2 rounded-xl bg-white/10 text-white text-sm font-bold hover:bg-white/20 transition-all">
+              Close
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-between">
+              <span className="text-sm text-zinc-400 font-medium">Price</span>
+              <span className="text-2xl font-black text-white font-mono">${addon.price}<span className="text-sm text-zinc-500 font-bold">{addon.is_recurring ? "/mo" : ""}</span></span>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-black text-zinc-500 uppercase tracking-widest">Payment Method</p>
+              <div className="grid grid-cols-2 gap-2">
+                {(["paypal", "bank_transfer"] as const).map(m => (
+                  <button key={m} onClick={() => setMethod(m)}
+                    className={cn("p-3 rounded-xl border text-sm font-bold transition-all text-left",
+                      method === m ? "border-orange-500/50 bg-orange-500/10 text-white" : "border-white/10 bg-white/[0.02] text-zinc-400 hover:border-white/20"
+                    )}>
+                    {m === "paypal" ? "PayPal" : "Bank Transfer"}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs font-black text-zinc-500 uppercase tracking-widest">Payment Proof / Reference</p>
+              <textarea
+                value={proof} onChange={e => setProof(e.target.value)}
+                placeholder="Transaction ID, screenshot URL, or reference number..."
+                className="w-full h-20 bg-black/60 border border-white/10 rounded-xl p-3 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-orange-500/40 resize-none"
+              />
+            </div>
+
+            <button
+              onClick={handleSubmit}
+              disabled={submitting || !proof.trim()}
+              className="w-full h-11 rounded-xl bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+            >
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Submit Payment Request
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -118,15 +253,13 @@ function PlanCard({ plan, currentPlanSlug, onUpgrade }: {
   const isCurrent = plan.slug === currentPlanSlug;
   const isPopular = plan.slug === "pro";
   const features: string[] = [
-    plan.cardsPerDay >= 999 ? "Unlimited cards/day" : plan.cardsPerDay > 0 ? `${plan.cardsPerDay} cards/day` : "",
-    plan.articlesPerMonth >= 999 ? "Unlimited articles/mo" : plan.articlesPerMonth > 0 ? `${plan.articlesPerMonth} articles/mo` : "",
-    plan.hasBlogAutomation ? "Blog Automation" : "",
-    plan.hasTelegramBot    ? "Telegram Bot"    : "",
-    plan.hasImageGenerator ? "Image Generator" : "",
-    plan.apiAccess         ? "API Access"      : "",
-    plan.overlayUpload     ? "Overlay Upload"  : "",
-    plan.customWatermark   ? "Custom Watermark": "",
-    plan.credits > 0       ? `${plan.credits} credits` : "",
+    plan.monthly_credits > 0       ? `${plan.monthly_credits} credits/month` : "",
+    plan.has_blog_automation       ? "Blog Automation"   : "",
+    plan.has_telegram_bot          ? "Telegram Bot"      : "",
+    plan.has_image_generator       ? "Image Generator"   : "",
+    plan.has_api_access            ? "API Access"        : "",
+    plan.has_overlay_upload        ? "Overlay Upload"    : "",
+    plan.has_custom_watermark      ? "Custom Watermark"  : "",
   ].filter(Boolean);
 
   return (
@@ -153,16 +286,16 @@ function PlanCard({ plan, currentPlanSlug, onUpgrade }: {
       </div>
       <div className="flex items-baseline gap-1">
         <span className="text-3xl font-black text-white font-mono tracking-tighter">
-          {plan.priceMonthly === 0 ? "Free" : `${plan.priceMonthly}`}
+          {plan.price_monthly === 0 ? "Free" : `${plan.price_monthly}`}
         </span>
-        {plan.priceMonthly > 0 && (
-          <span className="text-xs text-zinc-500 font-bold">MAD/mo</span>
+        {plan.price_monthly > 0 && (
+          <span className="text-xs text-zinc-500 font-bold">$/mo</span>
         )}
       </div>
       <div className="space-y-2 text-[11px] text-zinc-400 flex-1">
         <div className="flex items-center gap-2">
           <Globe className="w-3 h-3 text-orange-400" />
-          <span>{plan.maxSites === 0 || plan.maxSites >= 999 ? "Unlimited" : plan.maxSites} site{plan.maxSites !== 1 ? "s" : ""}</span>
+          <span>{plan.max_sites === 0 ? "No sites" : plan.max_sites >= 999 ? "Unlimited sites" : `${plan.max_sites} site${plan.max_sites !== 1 ? "s" : ""}`}</span>
         </div>
         {features.map((f) => (
           <div key={f} className="flex items-center gap-2">
@@ -184,9 +317,10 @@ function PlanCard({ plan, currentPlanSlug, onUpgrade }: {
 }
 
 const REQ_STATUS: Record<string, { label: string; cls: string }> = {
-  pending:  { label: "Pending Review", cls: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
-  approved: { label: "Approved",       cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
-  rejected: { label: "Rejected",       cls: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+  pending:   { label: "Pending Review", cls: "text-amber-400 bg-amber-500/10 border-amber-500/20" },
+  approved:  { label: "Approved",       cls: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20" },
+  rejected:  { label: "Rejected",       cls: "text-rose-400 bg-rose-500/10 border-rose-500/20" },
+  cancelled: { label: "Cancelled",      cls: "text-zinc-400 bg-zinc-500/10 border-zinc-500/20" },
 };
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -198,6 +332,8 @@ export function Billing() {
   const [customPoints, setCustomPoints]         = useState(50);
   const [pointsForPurchase, setPointsForPurchase] = useState(50);
   const [showHistory, setShowHistory]           = useState(false);
+  const [addonModalOpen, setAddonModalOpen]     = useState(false);
+  const [selectedAddon, setSelectedAddon]       = useState<PlanAddon | null>(null);
 
   const { data: billing, isLoading: billingLoading } = useQuery<BillingStatus>({
     queryKey: ["billing", "status"],
@@ -235,11 +371,40 @@ export function Billing() {
       return r.json();
     },
     staleTime: 15_000,
-    enabled: showHistory,
   });
 
+  const { data: addonsData } = useQuery<{ addons: PlanAddon[] }>({
+    queryKey: ["addons", "available"],
+    queryFn: async () => {
+      const r = await fetch("/api/addons", { headers: AUTH() });
+      if (!r.ok) return { addons: [] };
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
+
+  const { data: myAddonsData, refetch: refetchMyAddons } = useQuery<{ addons: UserAddon[] }>({
+    queryKey: ["addons", "mine"],
+    queryFn: async () => {
+      const r = await fetch("/api/addons/mine", { headers: AUTH() });
+      if (!r.ok) return { addons: [] };
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  const cancelAddon = async (userAddonId: number) => {
+    if (!confirm("Are you sure you want to cancel this addon?")) return;
+    await fetch(`/api/addons/mine/${userAddonId}`, { method: "DELETE", headers: AUTH() });
+    refetchMyAddons();
+    qc.invalidateQueries({ queryKey: ["billing", "status"] });
+  };
+
+  const availableAddons = addonsData?.addons ?? [];
+  const myAddons = myAddonsData?.addons ?? [];
+
   const pointPrice = parseFloat(siteInfo?.settings?.points_price_per_unit || "2") || 2;
-  const pointsBalance = billing?.usage.credits.points ?? 0;
+  const creditsTotal = billing?.usage.credits.total ?? 0;
 
   const handleUpgradeClick = (plan: Plan) => {
     setSelectedPlan(plan);
@@ -251,13 +416,12 @@ export function Billing() {
       id: 0,
       name: `points_${customPoints}`,
       slug: `points_${customPoints}`,
-      displayName: `${customPoints} PT Package`,
-      priceMonthly: customPoints * pointPrice,
-      priceYearly: 0,
-      cardsPerDay: 0, maxSites: 0, articlesPerMonth: 0,
-      hasTelegramBot: false, hasBlogAutomation: false, hasImageGenerator: false,
-      apiAccess: false, overlayUpload: false, customWatermark: false,
-      credits: 0, isActive: true, sortOrder: 0,
+      price_monthly: customPoints * pointPrice,
+      price_yearly: 0,
+      monthly_credits: 0, max_sites: 0,
+      has_telegram_bot: false, has_blog_automation: false, has_image_generator: false,
+      has_api_access: false, has_overlay_upload: false, has_custom_watermark: false,
+      is_active: true, sort_order: 0,
     } as any);
     setPointsForPurchase(customPoints);
     setUpgradeModalOpen(true);
@@ -276,7 +440,7 @@ export function Billing() {
     );
   }
 
-  const currentPlanSlug = billing?.plan.name ?? "free";
+  const currentPlanSlug = billing?.plan?.name ?? "free";
   const sub = billing?.subscription;
 
   return (
@@ -301,15 +465,15 @@ export function Billing() {
               <div>
                 <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest mb-2">Current Plan</p>
                 <div className="flex items-center gap-3">
-                  <h2 className="text-2xl font-black text-white tracking-tight">{billing.plan.displayName}</h2>
+                  <h2 className="text-2xl font-black text-white tracking-tight">{billing.plan?.displayName ?? "Free"}</h2>
                   {sub && <StatusBadge status={sub.status} />}
                 </div>
               </div>
               <div className="text-right">
                 <p className="text-3xl font-black text-white font-mono">
-                  {billing.plan.priceMonthly === 0 ? "Free" : `${billing.plan.priceMonthly}`}
+                  {billing.plan?.price_monthly === 0 ? "Free" : `$${billing.plan?.price_monthly ?? 0}`}
                 </p>
-                {billing.plan.priceMonthly > 0 && <p className="text-xs text-zinc-500">MAD/month</p>}
+                {(billing.plan?.price_monthly ?? 0) > 0 && <p className="text-xs text-zinc-500">/month</p>}
               </div>
             </div>
 
@@ -330,23 +494,28 @@ export function Billing() {
             {/* Usage Bars */}
             <div className="space-y-5">
               <LimitBar
-                label="Cards Today"
-                used={billing.usage.cards.used}
-                max={billing.usage.cards.max}
-                unlimited={billing.usage.cards.unlimited}
-                percentage={billing.usage.cards.percentage}
+                label="Daily Operations"
+                used={billing.usage.credits.daily_usage}
+                max={billing.usage.credits.daily_limit}
+                unlimited={billing.usage.credits.daily_limit >= 999}
+                percentage={billing.usage.credits.daily_limit > 0 ? Math.round((billing.usage.credits.daily_usage / billing.usage.credits.daily_limit) * 100) : 0}
                 icon={Zap} color="text-amber-400"
               />
               <LimitBar
-                label="Articles this month"
-                used={billing.usage.articles.used}
-                max={billing.usage.articles.max}
-                unlimited={billing.usage.articles.unlimited}
-                percentage={billing.usage.articles.percentage}
+                label="Monthly Credits"
+                used={(billing.plan?.monthly_credits ?? 0) - billing.usage.credits.monthly}
+                max={billing.plan?.monthly_credits ?? 0}
+                unlimited={(billing.plan?.monthly_credits ?? 0) >= 9999}
+                percentage={billing.plan?.monthly_credits ? Math.round(((billing.plan.monthly_credits - billing.usage.credits.monthly) / billing.plan.monthly_credits) * 100) : 0}
                 icon={FileText} color="text-orange-400"
               />
               <LimitBar
-                label="Sites"
+                label={
+                  (billing.effective && billing.plan &&
+                  billing.effective.max_sites > billing.plan.max_sites)
+                    ? "Sites (boosted by Add-on)"
+                    : "Sites"
+                }
                 used={billing.usage.sites.used}
                 max={billing.usage.sites.max}
                 unlimited={billing.usage.sites.unlimited}
@@ -363,7 +532,7 @@ export function Billing() {
             </p>
 
             <div className="flex-1 flex flex-col items-center justify-center gap-2 my-4">
-              <span className="text-6xl font-black text-white font-mono tracking-tighter">{pointsBalance}</span>
+              <span className="text-6xl font-black text-white font-mono tracking-tighter">{creditsTotal}</span>
               <span className="text-[11px] text-zinc-500 font-bold uppercase tracking-widest">points available</span>
             </div>
 
@@ -424,7 +593,7 @@ export function Billing() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Credit Balance</span>
-                <span className="text-xs text-zinc-300 font-mono font-bold">{billing.usage.credits.balance} CR</span>
+                <span className="text-xs text-zinc-300 font-mono font-bold">{billing.usage.credits.total} CR</span>
               </div>
             </div>
           </div>
@@ -445,7 +614,7 @@ export function Billing() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-            {[...(plansData?.plans ?? [])].sort((a, b) => a.sortOrder - b.sortOrder).map((plan) => (
+            {[...(plansData?.plans ?? [])].sort((a, b) => a.sort_order - b.sort_order).map((plan) => (
               <PlanCard
                 key={plan.id}
                 plan={plan}
@@ -473,7 +642,7 @@ export function Billing() {
           </div>
           <button
             onClick={() => {
-              const upgradePlan = plansData?.plans.find(p => p.priceMonthly > 0);
+              const upgradePlan = plansData?.plans.find(p => p.price_monthly > 0);
               if (upgradePlan) handleUpgradeClick(upgradePlan);
             }}
             className="ml-auto shrink-0 px-4 py-2 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[11px] font-black uppercase tracking-widest hover:bg-amber-500/30 transition-all flex items-center gap-1.5"
@@ -482,6 +651,112 @@ export function Billing() {
           </button>
         </div>
       )}
+
+      {/* ── Add-ons ─────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-4 mb-6">
+          <Puzzle className="w-4 h-4 text-zinc-500" />
+          <h2 className="text-lg font-bold text-white tracking-tight">Feature Add-ons</h2>
+        </div>
+
+        {/* My Active Add-ons */}
+        {myAddons.length > 0 && (
+          <div className="mb-6 space-y-3">
+            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-3">My Active Add-ons</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {myAddons.map(a => (
+                <div key={a.id} className="flex items-center justify-between gap-3 p-4 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      {a.type === "feature" ? <Sparkles className="w-4 h-4 text-purple-400" />
+                        : a.type === "credits" ? <Coins className="w-4 h-4 text-amber-400" />
+                        : <Layers className="w-4 h-4 text-blue-400" />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">{a.name}</p>
+                      <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wide">
+                        {a.is_recurring ? "Monthly" : "Lifetime"} • ${a.price}{a.is_recurring ? "/mo" : ""}
+                      </p>
+                      {a.expiresAt && <p className="text-[10px] text-zinc-500">Expires {new Date(a.expiresAt).toLocaleDateString()}</p>}
+                    </div>
+                  </div>
+                  {a.is_recurring && (
+                    <button
+                      onClick={() => cancelAddon(a.id)}
+                      className="px-3 py-1.5 rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-400 text-[10px] font-black uppercase tracking-widest hover:bg-rose-500/20 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Available Add-ons */}
+        {availableAddons.length === 0 ? (
+          <div className="text-center py-10 rounded-2xl border border-dashed border-white/10">
+            <Package className="w-8 h-8 text-zinc-700 mx-auto mb-2" />
+            <p className="text-zinc-500 text-sm">No add-ons available</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {availableAddons.map(addon => {
+              const isActive = myAddons.some(a => a.addonId === addon.id);
+              const typeIcon = addon.type === "feature" ? <Sparkles className="w-4 h-4 text-purple-400" />
+                : addon.type === "credits" ? <Coins className="w-4 h-4 text-amber-400" />
+                : <Layers className="w-4 h-4 text-blue-400" />;
+              const typeLabel = addon.type === "feature" ? "Feature Unlock"
+                : addon.type === "credits" ? `+${addon.credits_amount} Credits`
+                : addon.limit_key ? `+${addon.limit_value} ${addon.limit_key.replace(/_/g, " ")}` : "Limit Boost";
+              return (
+                <div key={addon.id} className={cn(
+                  "relative rounded-2xl border p-5 flex flex-col gap-4 transition-all duration-300",
+                  isActive
+                    ? "border-emerald-500/40 bg-emerald-500/5 shadow-[0_0_30px_rgba(16,185,129,0.08)]"
+                    : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.03]"
+                )}>
+                  {isActive && (
+                    <div className="absolute -top-2.5 right-4 px-2.5 py-0.5 bg-emerald-500 rounded-full">
+                      <span className="text-[9px] font-black text-white uppercase tracking-widest flex items-center gap-1">
+                        <Check className="w-2.5 h-2.5" /> Active
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center shrink-0 border border-white/5">
+                      {typeIcon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-sm font-black text-white">{addon.name}</h3>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">{typeLabel}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-black text-white font-mono">${addon.price}</span>
+                    {addon.is_recurring && <span className="text-xs text-zinc-500 font-bold">/mo</span>}
+                    {!addon.is_recurring && <span className="text-xs text-zinc-500 font-bold">one-time</span>}
+                  </div>
+                  {!isActive ? (
+                    <button
+                      onClick={() => { setSelectedAddon(addon); setAddonModalOpen(true); }}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white"
+                    >
+                      Add to Plan <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                      <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">Active</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* Payment History */}
       <div>
@@ -520,7 +795,9 @@ export function Billing() {
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-white text-sm capitalize">
-                            {req.type === "points_purchase" ? "Points Purchase" : "Plan Upgrade"}
+                            {req.type === "points_purchase" ? "Points Purchase"
+                              : req.type === "addon_purchase" ? "Add-on Purchase"
+                              : "Plan Upgrade"}
                           </span>
                           {req.planName && <span className="text-xs text-zinc-500">→ {req.planName}</span>}
                           {req.pointsAmount && <span className="text-xs text-amber-400 font-bold">{req.pointsAmount} PT</span>}
@@ -548,16 +825,33 @@ export function Billing() {
         )}
       </div>
 
+      {/* Addon Purchase Modal */}
+      {selectedAddon && (
+        <AddonPurchaseModal
+          addon={selectedAddon}
+          open={addonModalOpen}
+          onClose={() => { setAddonModalOpen(false); setSelectedAddon(null); }}
+          onSuccess={() => {
+            refetchMyAddons();
+            qc.invalidateQueries({ queryKey: ["payments", "my-requests"] });
+          }}
+        />
+      )}
+
       {/* Upgrade Modal */}
       {selectedPlan && (
         <UpgradeModal
           open={upgradeModalOpen}
-          onOpenChange={setUpgradeModalOpen}
+          onOpenChange={(open) => {
+            setUpgradeModalOpen(open);
+          }}
           planId={selectedPlan.id}
           planName={(selectedPlan as any).displayName ?? selectedPlan.name}
-          price={selectedPlan.priceMonthly}
+          price={selectedPlan.price_monthly}
           type={selectedPlan.name.startsWith("points_") ? "points_purchase" : "plan_upgrade"}
           pointsAmount={selectedPlan.name.startsWith("points_") ? pointsForPurchase : undefined}
+          hasPendingRequest={myRequests.some(r => r.planId === selectedPlan.id && r.status === "pending")}
+          lastRejected={myRequests.find(r => r.planId === selectedPlan.id && r.status === "rejected") ?? null}
         />
       )}
     </div>

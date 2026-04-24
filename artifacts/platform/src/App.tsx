@@ -32,6 +32,7 @@ import { Billing } from "./pages/billing";
 import { BlogAdmin } from "./pages/blog-admin";
 import Landing from "./pages/landing";
 import RssFeeds from "./pages/rss-feeds";
+import PointsPage from "./pages/points";
 
 const queryClient = new QueryClient();
 
@@ -87,6 +88,7 @@ function Router() {
       <Route path="/billing"><ProtectedRoute component={Billing} /></Route>
       <Route path="/blog-admin"><ProtectedRoute component={BlogAdmin} /></Route>
       <Route path="/rss-feeds"><ProtectedRoute component={RssFeeds} /></Route>
+      <Route path="/points"><ProtectedRoute component={PointsPage} /></Route>
 
       <Route path="/landing" component={Landing} />
       <Route path="/" component={Landing} />
