@@ -1,6 +1,7 @@
 import { db, usersTable, creditTransactionsTable, systemSettingsTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { getEffectiveLimits } from "./planGuard";
+import type { KeySource } from "./providerKeyResolver";
 
 /**
  * Checks if a user has sufficient credits and the right plan features to generate an AI image.
@@ -46,7 +47,8 @@ export async function deductAiImageCredits(
   userId: number,
   service: "web" | "api" | "bot" | "telegram" = "web",
   promptSnippet?: string,
-  count: number = 1
+  count: number = 1,
+  providerKeySource: KeySource = "platform"
 ): Promise<{ success: boolean; creditsDeducted: number; transactionId: string; error?: string }> {
   try {
     const [settings] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "ai_image_cost_per_generation")).limit(1);
@@ -54,7 +56,8 @@ export async function deductAiImageCredits(
     const totalCost = costPerGen * count;
 
     return await db.transaction(async (tx) => {
-      const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+      // SELECT ... FOR UPDATE to lock the row and prevent race conditions
+      const [user] = await tx.select().from(usersTable).where(eq(usersTable.id, userId)).for("update").limit(1);
       if (!user) return { success: false, creditsDeducted: 0, transactionId: "", error: "User not found" };
 
       const monthly = user.monthly_credits ?? 0;
@@ -85,7 +88,8 @@ export async function deductAiImageCredits(
         type: "image_generator",
         amount: -totalCost,
         description: `توليد ${count} صورة AI: ${promptSnippet?.slice(0, 50) || "بدون عنوان"}...`,
-        service
+        service,
+        providerKeySource,
       }).returning({ id: creditTransactionsTable.id });
 
       return { success: true, creditsDeducted: totalCost, transactionId: String(inserted.id) };

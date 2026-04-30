@@ -10,6 +10,7 @@ export const creditTransactionsTable = pgTable("credit_transactions", {
   amount: integer("amount").notNull(),
   description: text("description"),
   service: varchar("service", { length: 50 }), // "image_generator" | "blog_automation"
+  providerKeySource: varchar("provider_key_source", { length: 20 }).default("platform"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -14,6 +14,8 @@ import { usersTable, plansTable, creditTransactionsTable } from "@workspace/db";
 import { eq, and, gte, sql } from "drizzle-orm";
 import { getEffectiveLimits } from "./planGuard";
 
+import type { KeySource } from "./providerKeyResolver";
+
 export type ServiceType = "image_generator" | "blog_automation";
 
 export type DeductResult =
@@ -86,7 +88,8 @@ export async function deductCredits(
   cost: number,
   service: ServiceType,
   featureFlag: keyof typeof plansTable.$inferSelect,
-  description: string
+  description: string,
+  providerKeySource: KeySource = "platform"
 ): Promise<DeductResult> {
   // 1. Load fresh user
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
@@ -166,6 +169,7 @@ export async function deductCredits(
         amount: -cost,
         description,
         service,
+        providerKeySource,
       });
 
       return {

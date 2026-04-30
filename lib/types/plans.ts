@@ -20,10 +20,12 @@ export interface PlanFeatures {
   rate_limit_hourly: number;
 }
 
-export type PlanSlug = "free" | "pro" | "business";
+export type PlanMode = "platform" | "byok";
+
+export type PlanSlug = string;
 
 export interface PlanGuardErrorBody {
-  error: "FEATURE_DISABLED" | "PLAN_LIMIT_EXCEEDED";
+  error: "FEATURE_DISABLED" | "PLAN_LIMIT_EXCEEDED" | "BYOK_KEY_MISSING" | "BYOK_KEY_INVALID";
   feature: keyof PlanFeatures;
   message: string;
   requiredPlan?: PlanSlug;

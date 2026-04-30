@@ -30,6 +30,8 @@ export const plansTable = pgTable("plans", {
   price_monthly: integer("price_monthly").notNull().default(0),
   price_yearly: integer("price_yearly").notNull().default(0),
 
+  plan_mode: varchar("plan_mode", { length: 20 }).notNull().default("platform"),
+
   sort_order: integer("sort_order").notNull().default(0),
   is_active: boolean("is_active").notNull().default(true),
   is_free: boolean("is_free").notNull().default(false),
