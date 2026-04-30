@@ -7,6 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { GoogleLogin } from "@react-oauth/google";
 import { getApiBaseUrl } from "@/lib/api";
 import { usePublicSettings } from "@/lib/publicSettings";
+import { useContext } from "react";
+import { AuthContext } from "@/contexts/auth";
 
 const ACCENT  = "#6366f1";
 const ACCENT3 = "#8b5cf6";
@@ -28,7 +30,8 @@ const registerSchema = z.object({
 export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { mutate: register, isPending } = useRegister();
+  const { mutate: registerMutate, isPending } = useRegister();
+  const authCtx = useContext(AuthContext);
 
   const { register: reg, handleSubmit, formState: { errors } } = useForm<z.infer<typeof registerSchema>>({
     resolver: zodResolver(registerSchema),
@@ -36,20 +39,24 @@ export default function Register() {
   });
 
   function onSuccess(data: any) {
-    localStorage.setItem("pro_token", data.token);
-    setLocation("/dashboard");
+    if (authCtx) {
+      authCtx.login(data.token, data.user);
+    } else {
+      localStorage.setItem("pro_token", data.token);
+    }
     toast({
       title: "Account created",
       description: data.user?.emailVerified
         ? "Welcome to NewsCard Pro"
         : "Welcome! Check your email to verify your account.",
     });
+    setLocation("/dashboard");
   }
 
   function onSubmit(values: z.infer<typeof registerSchema>) {
     const payload: any = { name: values.name, email: values.email, password: values.password };
     if (values.phone) payload.phone = values.phone;
-    register({ data: payload }, {
+    registerMutate({ data: payload }, {
       onSuccess,
       onError: (error: any) => {
         toast({ title: "Error", description: error?.data?.error || "Something went wrong", variant: "destructive" });

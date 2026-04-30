@@ -7,6 +7,8 @@ import { useToast } from "@/hooks/use-toast";
 import { GoogleLogin } from "@react-oauth/google";
 import { getApiBaseUrl } from "@/lib/api";
 import { usePublicSettings } from "@/lib/publicSettings";
+import { useContext } from "react";
+import { AuthContext } from "@/contexts/auth";
 
 const ACCENT  = "#6366f1";
 const ACCENT3 = "#8b5cf6";
@@ -26,7 +28,8 @@ const loginSchema = z.object({
 export default function Login() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { mutate: login, isPending } = useLogin();
+  const { mutate: loginMutate, isPending } = useLogin();
+  const authCtx = useContext(AuthContext);
 
   const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
@@ -34,13 +37,17 @@ export default function Login() {
   });
 
   function onSuccess(data: any) {
-    localStorage.setItem("pro_token", data.token);
-    setLocation("/dashboard");
+    if (authCtx) {
+      authCtx.login(data.token, data.user);
+    } else {
+      localStorage.setItem("pro_token", data.token);
+    }
     toast({ title: "Signed in successfully", description: "Welcome back to NewsCard Pro" });
+    setLocation("/dashboard");
   }
 
   function onSubmit(values: z.infer<typeof loginSchema>) {
-    login({ data: values }, {
+    loginMutate({ data: values }, {
       onSuccess,
       onError: (error: any) => {
         toast({ title: "Error", description: error?.data?.error || "Invalid email or password", variant: "destructive" });
