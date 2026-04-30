@@ -309,32 +309,50 @@ router.put("/settings", requireAdmin, async (req, res) => {
 
 // POST /admin/test-ai
 router.post("/test-ai", requireAdmin, async (req, res) => {
-  const { provider, api_key, base_url, model } = req.body as {
-    provider: string; api_key: string; base_url?: string; model?: string;
+  const { provider, api_key, base_url, model, use_stored_key } = req.body as {
+    provider: string; api_key?: string; base_url?: string; model?: string; use_stored_key?: boolean;
   };
-  if (!api_key) return res.status(400).json({ ok: false, error: "API key is required" });
+
+  let resolvedKey = api_key ?? "";
+
+  // Allow using stored keys from system settings instead of raw keys
+  if (use_stored_key || !resolvedKey) {
+    const settRows = await db.select().from(systemSettingsTable);
+    const sett: Record<string, string> = {};
+    for (const r of settRows) sett[r.key] = r.value ?? "";
+
+    if (provider === "openrouter") resolvedKey = sett["openrouter_api_key_1"] ?? "";
+    else if (provider === "openai") resolvedKey = sett["openai_api_key"] ?? "";
+    else if (provider === "custom") resolvedKey = sett["custom_ai_key"] ?? "";
+  }
+
+  if (!resolvedKey) return res.status(400).json({ ok: false, error: "API key is required (provide one or use stored key)" });
 
   try {
     let endpoint = "";
-    let headers: Record<string, string> = { "Content-Type": "application/json", "Authorization": `Bearer ${api_key}` };
+    let headers: Record<string, string> = { "Content-Type": "application/json", "Authorization": `Bearer ${resolvedKey}` };
     let body: Record<string, unknown> = { model: model || "openai/gpt-4o-mini", messages: [{ role: "user", content: "Say OK" }], max_tokens: 5 };
 
     if (provider === "openrouter") { endpoint = "https://openrouter.ai/api/v1/chat/completions"; headers["HTTP-Referer"] = "https://newscard.pro"; }
     else if (provider === "openai") { endpoint = "https://api.openai.com/v1/chat/completions"; body.model = model || "gpt-4o-mini"; }
     else if (provider === "anthropic") {
       endpoint = "https://api.anthropic.com/v1/messages";
-      headers = { "Content-Type": "application/json", "x-api-key": api_key, "anthropic-version": "2023-06-01" };
+      headers = { "Content-Type": "application/json", "x-api-key": resolvedKey, "anthropic-version": "2023-06-01" };
       body = { model: model || "claude-3-haiku-20240307", max_tokens: 5, messages: [{ role: "user", content: "Say OK" }] };
     } else if (provider === "custom" && base_url) {
       endpoint = base_url.replace(/\/$/, "") + "/chat/completions";
     } else { return res.status(400).json({ ok: false, error: "Unknown provider" }); }
 
     const resp = await fetch(endpoint, { method: "POST", headers, body: JSON.stringify(body) });
-    if (resp.ok) return res.json({ ok: true, message: "✅ Connection successful" });
+    if (resp.ok) return res.json({ ok: true, message: "Connection successful" });
     const txt = await resp.text();
-    return res.json({ ok: false, error: `HTTP ${resp.status}: ${txt.slice(0, 200)}` });
+    // Mask any API keys that might appear in error response
+    const sanitizedTxt = txt.replace(/sk-[a-zA-Z0-9]{10,}/g, "sk-****").replace(/key_[a-zA-Z0-9]{10,}/g, "key_****");
+    return res.json({ ok: false, error: `HTTP ${resp.status}: ${sanitizedTxt.slice(0, 200)}` });
   } catch (err: unknown) {
-    return res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    const msg = err instanceof Error ? err.message : String(err);
+    const sanitizedMsg = msg.replace(/sk-[a-zA-Z0-9]{10,}/g, "sk-****").replace(/key_[a-zA-Z0-9]{10,}/g, "key_****");
+    return res.json({ ok: false, error: sanitizedMsg });
   }
 });
 

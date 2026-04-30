@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { eq } from "drizzle-orm";
 import { db, articlesTable, agentPromptsTable, pipelineLogsTable, sitesTable, usersTable, creditTransactionsTable, systemSettingsTable } from "@workspace/db";
 import type { Article } from "@workspace/db";
@@ -109,6 +108,7 @@ function resolveAiAnalysisCaller(
   }
 
   if (provider === "openai") {
+    const key = settings.openai_api_key ?? "";
     const model = settings.openai_model_image_analysis ?? "gpt-4o";
     if (!key) throw new Error("OpenAI API key not configured for image analysis");
     return (prompt, img) => callOpenAIVision("https://api.openai.com/v1", key, model, prompt, img);
@@ -1126,7 +1126,7 @@ ${cleaned}`;
             if (newMonthly >= toDeduct) { newMonthly -= toDeduct; }
             else { toDeduct -= newMonthly; newMonthly = 0; newPurchased = Math.max(0, newPurchased - toDeduct); }
             
-            await db.transaction(async (tx) => {
+            await db.transaction(async (tx: typeof db) => {
               await tx.update(usersTable).set({ monthly_credits: newMonthly, purchased_credits: newPurchased }).where(eq(usersTable.id, fresh.user_id));
               await tx.insert(creditTransactionsTable).values({
                 userId: fresh.user_id,
@@ -1168,7 +1168,7 @@ ${cleaned}`;
     const cleanedPrimary = sanitizeFocusKeyword(fresh6.primary_keyword);
     const secondaryKws = fresh6.secondary_keywords ?? undefined;
     // Build combined focus keyword string for logging (primary + secondary)
-    const allFocusKws = [cleanedPrimary, ...(secondaryKws ? secondaryKws.split(",").map(k => sanitizeFocusKeyword(k)).filter(Boolean) : [])].join(", ");
+    const allFocusKws = [cleanedPrimary, ...(secondaryKws ? secondaryKws.split(",").map((k: string) => sanitizeFocusKeyword(k)).filter(Boolean) : [])].join(", ");
     console.log(`[rank_math] article=${articleId} focus_keyword="${allFocusKws}"`);
 
     const ogLocale = isArabicSite ? "ar_AR" : isFrenchSite ? "fr_FR" : "en_US";

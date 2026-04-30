@@ -43,7 +43,7 @@ interface User {
 interface AuthContextValue {
   user: User | null;
   token: string | null;
-  login: (token: string, user: User) => void;
+  login: (token: string, user: User, refreshToken?: string) => void;
   logout: () => void;
   isLoading: boolean;
   isAuthenticated: boolean;
@@ -83,14 +83,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isError, token]);
 
-  const login = useCallback((newToken: string, newUser: User) => {
+  const login = useCallback((newToken: string, newUser: User, refreshToken?: string) => {
     localStorage.setItem("pro_token", newToken);
+    if (refreshToken) localStorage.setItem("pro_refresh_token", refreshToken);
     setToken(newToken);
     setUser(newUser);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem("pro_token");
+    localStorage.removeItem("pro_refresh_token");
     setToken(null);
     setUser(null);
   }, []);

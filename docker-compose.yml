@@ -4,9 +4,9 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: mediaflow
-      POSTGRES_PASSWORD: mediaflow_secret
-      POSTGRES_DB: mediaflow
+      POSTGRES_USER: ${PGUSER:-mediaflow}
+      POSTGRES_PASSWORD: ${PGPASSWORD:?Set PGPASSWORD in .env}
+      POSTGRES_DB: ${PGDATABASE:-mediaflow}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -24,8 +24,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 8080
-      DATABASE_URL: postgresql://mediaflow:mediaflow_secret@db:5432/mediaflow
-      SESSION_SECRET: change-me-in-production-use-a-long-random-string
+      DATABASE_URL: postgresql://${PGUSER:-mediaflow}:${PGPASSWORD:?Set PGPASSWORD in .env}@db:5432/${PGDATABASE:-mediaflow}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}

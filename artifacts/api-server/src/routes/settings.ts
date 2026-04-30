@@ -2,7 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { systemSettingsTable, usersTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { requireAdmin, requireAuth } from "../lib/auth";
+import { requireAdmin } from "../lib/auth";
 import { getAllPointCosts } from "../lib/costService";
 import { sendTestEmail } from "../lib/email";
 
@@ -71,7 +71,7 @@ async function verifyTelegramToken(token: string): Promise<{ ok: boolean; userna
 }
 
 // GET /api/settings/telegram
-router.get("/telegram", requireAuth, async (_req, res) => {
+router.get("/telegram", requireAdmin, async (_req, res) => {
   const envToken = process.env.TELEGRAM_BOT_TOKEN;
   const [dbRow] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "telegram_bot_token")).limit(1);
   const dbToken = dbRow?.value ?? null;
@@ -96,10 +96,7 @@ router.get("/telegram", requireAuth, async (_req, res) => {
 });
 
 // PUT /api/settings/telegram — admin only
-router.put("/telegram", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
-
+router.put("/telegram", requireAdmin, async (req, res) => {
   const { token } = req.body as { token?: string };
   if (!token?.trim()) return res.status(400).json({ error: "Token is required" });
 
@@ -117,9 +114,7 @@ router.put("/telegram", requireAuth, async (req, res) => {
 });
 
 // DELETE /api/settings/telegram — admin only
-router.delete("/telegram", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
+router.delete("/telegram", requireAdmin, async (_req, res) => {
 
   await db.delete(systemSettingsTable).where(eq(systemSettingsTable.key, "telegram_bot_token"));
   return res.json({ success: true });
@@ -128,7 +123,7 @@ router.delete("/telegram", requireAuth, async (req, res) => {
 // ── /api/settings/google ────────────────────────────────────────────────────
 
 // GET /api/settings/google
-router.get("/google", requireAuth, async (_req, res) => {
+router.get("/google", requireAdmin, async (_req, res) => {
   const [dbRow] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "google_client_id")).limit(1);
   const dbValue = dbRow?.value ?? null;
   const envValue = process.env.GOOGLE_CLIENT_ID || null;
@@ -143,10 +138,7 @@ router.get("/google", requireAuth, async (_req, res) => {
 });
 
 // PUT /api/settings/google — admin only
-router.put("/google", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
-
+router.put("/google", requireAdmin, async (req, res) => {
   const { clientId } = req.body as { clientId?: string };
   if (!clientId?.trim()) return res.status(400).json({ error: "Client ID is required" });
 
@@ -162,9 +154,7 @@ router.put("/google", requireAuth, async (req, res) => {
 });
 
 // DELETE /api/settings/google — admin only
-router.delete("/google", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
+router.delete("/google", requireAdmin, async (_req, res) => {
 
   await db.delete(systemSettingsTable).where(eq(systemSettingsTable.key, "google_client_id"));
   return res.json({ success: true });
@@ -175,7 +165,7 @@ router.delete("/google", requireAuth, async (req, res) => {
 const SMTP_KEYS = ["smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from_email", "smtp_from_name"] as const;
 
 // GET /api/settings/smtp
-router.get("/smtp", requireAuth, async (_req, res) => {
+router.get("/smtp", requireAdmin, async (_req, res) => {
   const rows = await db.select().from(systemSettingsTable);
   const map: Record<string, string> = {};
   for (const row of rows) map[row.key] = row.value ?? "";
@@ -197,10 +187,7 @@ router.get("/smtp", requireAuth, async (_req, res) => {
 });
 
 // PUT /api/settings/smtp — admin only
-router.put("/smtp", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
-
+router.put("/smtp", requireAdmin, async (req, res) => {
   const { host, port, user: smtpUser, pass, from } = req.body as { host?: string; port?: string; user?: string; pass?: string; from?: string };
 
   const entries: { key: string; value: string }[] = [];
@@ -223,9 +210,7 @@ router.put("/smtp", requireAuth, async (req, res) => {
 });
 
 // DELETE /api/settings/smtp — admin only
-router.delete("/smtp", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
+router.delete("/smtp", requireAdmin, async (_req, res) => {
 
   for (const key of SMTP_KEYS) {
     await db.delete(systemSettingsTable).where(eq(systemSettingsTable.key, key));
@@ -234,10 +219,8 @@ router.delete("/smtp", requireAuth, async (req, res) => {
 });
 
 // POST /api/settings/smtp/test — admin only
-router.post("/smtp/test", requireAuth, async (req, res) => {
+router.post("/smtp/test", requireAdmin, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
-  if (!user.isAdmin) return res.status(403).json({ error: "Admin only" });
-
   const { to } = req.body as { to?: string };
   try {
     await sendTestEmail(to || user.email, user.name);
