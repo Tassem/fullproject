@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { Router } from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { requireAuth } from "../../lib/auth";
 
 import { generateNanobananaImage } from "../../lib/nanobananaClient";
@@ -34,7 +35,7 @@ if (!fs.existsSync(RESULTS_DIR)) {
 }
 
 function makeId() {
-  return `nano-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  return `nano-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function ratioFromSize(w: number, h: number): string {
@@ -112,7 +113,7 @@ router.post("/generate", requireAuth, async (req: Request, res: Response) => {
     createdAt: Date.now(),
     images: [],
     width, height, count,
-    seed: seed || Math.floor(Math.random() * 1000000),
+    seed: seed || crypto.randomInt(1000000),
     userId: user.id,
   };
   jobs.set(job.id, job);

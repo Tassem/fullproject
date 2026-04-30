@@ -9,6 +9,7 @@ import { getSetting, getSettingNumber } from "../lib/settings";
 import { renderCard } from "../lib/cardRenderer";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 
 const router = Router();
 
@@ -73,7 +74,11 @@ router.post("/", requireAuth, async (req, res) => {
   // Read background image
   let bgBuffer: Buffer | null = null;
   if (backgroundPhotoFilename) {
-    const bgPath = path.join(uploadsDir, path.basename(backgroundPhotoFilename));
+    const raw = String(backgroundPhotoFilename);
+    if (raw.includes("..") || raw.includes("\0") || raw.includes("/") || raw.includes("\\")) {
+      return res.status(400).json({ error: "Invalid background filename" });
+    }
+    const bgPath = path.join(uploadsDir, path.basename(raw));
     if (fs.existsSync(bgPath)) bgBuffer = fs.readFileSync(bgPath);
   }
 
@@ -97,7 +102,7 @@ router.post("/", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Failed to render card" });
   }
 
-  const outFilename = `card-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
+  const outFilename = `card-${Date.now()}-${crypto.randomUUID()}.png`;
   fs.writeFileSync(path.join(uploadsDir, outFilename), pngBuffer);
   const imageUrl = `/api/photo/file/${outFilename}`;
 
@@ -187,7 +192,7 @@ router.post("/from-builder", requireAuth, async (req, res) => {
 
     const pngBuffer = await renderFromCanvasLayout(layout, title || null, null, exportW, exportH, uploadsDir);
 
-    const outFilename = `card-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
+    const outFilename = `card-${Date.now()}-${crypto.randomUUID()}.png`;
     fs.writeFileSync(path.join(uploadsDir, outFilename), pngBuffer);
     const imageUrl = `/api/photo/file/${outFilename}`;
 

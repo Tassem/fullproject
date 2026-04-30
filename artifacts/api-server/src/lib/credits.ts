@@ -126,46 +126,40 @@ export async function deductCredits(
     };
   }
 
-  const monthly = freshUser.monthly_credits ?? 0;
-  const purchased = freshUser.purchased_credits ?? 0;
-
-  // 7. Check total balance
-  if (cost > 0 && monthly + purchased < cost) {
-    return {
-      ok: false,
-      error: `رصيدك غير كافٍ. مطلوب: ${cost} | متاح: ${monthly + purchased}.`,
-      code: "insufficient_credits",
-    };
-  }
-
-  // 8. Atomic Deduction
-  let deductFromMonthly = Math.min(monthly, cost);
-  let deductFromPurchased = Math.max(0, cost - deductFromMonthly);
-
+  // 7–8. Atomic balance check + deduction inside a single transaction with row lock
   try {
-    await db.transaction(async (tx) => {
-      // Deduct monthly
-      if (deductFromMonthly > 0) {
-        const res = await tx.update(usersTable)
-          .set({ monthly_credits: sql`${usersTable.monthly_credits} - ${deductFromMonthly}` })
-          .where(and(eq(usersTable.id, userId), gte(usersTable.monthly_credits, deductFromMonthly)));
-        if ((res as any).rowCount === 0) throw new Error("Insufficient monthly credits (concurrency)");
+    const result = await db.transaction(async (tx) => {
+      // SELECT ... FOR UPDATE to lock the row and prevent race conditions
+      const [locked] = await tx
+        .select({
+          monthly_credits: usersTable.monthly_credits,
+          purchased_credits: usersTable.purchased_credits,
+        })
+        .from(usersTable)
+        .where(eq(usersTable.id, userId))
+        .for("update")
+        .limit(1);
+
+      if (!locked) throw new Error("User not found");
+
+      const monthly = locked.monthly_credits ?? 0;
+      const purchased = locked.purchased_credits ?? 0;
+
+      if (cost > 0 && monthly + purchased < cost) {
+        throw new Error(`رصيدك غير كافٍ. مطلوب: ${cost} | متاح: ${monthly + purchased}.`);
       }
 
-      // Deduct purchased
-      if (deductFromPurchased > 0) {
-        const res = await tx.update(usersTable)
-          .set({ purchased_credits: sql`${usersTable.purchased_credits} - ${deductFromPurchased}` })
-          .where(and(eq(usersTable.id, userId), gte(usersTable.purchased_credits, deductFromPurchased)));
-        if ((res as any).rowCount === 0) throw new Error("Insufficient purchased credits (concurrency)");
-      }
+      const deductFromMonthly = Math.min(monthly, cost);
+      const deductFromPurchased = Math.max(0, cost - deductFromMonthly);
 
-      // Update daily usage
       await tx.update(usersTable)
-        .set({ daily_usage_count: sql`${usersTable.daily_usage_count} + 1` })
+        .set({
+          monthly_credits: sql`${usersTable.monthly_credits} - ${deductFromMonthly}`,
+          purchased_credits: sql`${usersTable.purchased_credits} - ${deductFromPurchased}`,
+          daily_usage_count: sql`${usersTable.daily_usage_count} + 1`,
+        })
         .where(eq(usersTable.id, userId));
 
-      // Log transaction
       await tx.insert(creditTransactionsTable).values({
         userId,
         type: "spend",
@@ -173,17 +167,23 @@ export async function deductCredits(
         description,
         service,
       });
+
+      return {
+        ok: true as const,
+        creditsUsed: cost,
+        monthlyRemaining: monthly - deductFromMonthly,
+        purchasedRemaining: purchased - deductFromPurchased,
+        total: (monthly + purchased) - cost,
+      };
     });
 
-    return {
-      ok: true,
-      creditsUsed: cost,
-      monthlyRemaining: monthly - deductFromMonthly,
-      purchasedRemaining: purchased - deductFromPurchased,
-      total: (monthly + purchased) - cost,
-    };
+    return result;
   } catch (err: any) {
-    return { ok: false, error: err.message || "Deduction failed", code: "insufficient_credits" };
+    const msg = err.message || "Deduction failed";
+    if (msg.includes("رصيدك غير كافٍ")) {
+      return { ok: false, error: msg, code: "insufficient_credits" };
+    }
+    return { ok: false, error: msg, code: "insufficient_credits" };
   }
 }
 

@@ -13,6 +13,13 @@ import rateLimit from "express-rate-limit";
 
 const router = Router();
 
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-={}|;':",./<>?]).{8,}$/;
+function validatePassword(pw: string): string | null {
+  if (pw.length < 8) return "Password must be at least 8 characters";
+  if (!PASSWORD_REGEX.test(pw)) return "Password must include uppercase, lowercase, number, and special character";
+  return null;
+}
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -82,9 +89,12 @@ router.post("/register", authLimiter, async (req, res) => {
   const [existingName] = await db.select().from(usersTable).where(eq(usersTable.name, name)).limit(1);
   if (existingName) return res.status(409).json({ error: "Name already taken" });
 
+  const pwError = validatePassword(password);
+  if (pwError) return res.status(400).json({ error: pwError });
+
   const passwordHash = await bcrypt.hash(password, 10);
   const apiKey = "key_" + randomUUID().replace(/-/g, "");
-  const botCode = "NB-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+  const botCode = "NB-" + randomUUID().slice(0, 6).toUpperCase();
 
   const freePlan = await getPlan("free");
   const monthlyCredits = freePlan?.monthly_credits ?? 10;
@@ -188,7 +198,7 @@ router.post("/google", async (req, res) => {
       }
     } else {
       const apiKey = "key_" + randomUUID().replace(/-/g, "");
-      const botCode = "NB-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const botCode = "NB-" + randomUUID().slice(0, 6).toUpperCase();
       const freePlan = await getPlan("free");
       const monthlyCredits = freePlan?.monthly_credits ?? 10;
       const signupBonus = await getSignupBonus();
@@ -270,7 +280,8 @@ router.post("/forgot-password", authLimiter, async (req, res) => {
     }
 
     if ((!user.authProvider || user.authProvider === "google") && !user.passwordHash) {
-      return res.status(400).json({ error: "This account uses Google Sign-In. Please use the Google login button." });
+      // Return same generic message to avoid leaking that this is a Google-only account
+      return res.json({ message: "If an account exists with this email, you will receive a password reset link." });
     }
 
     const resetToken = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
@@ -307,9 +318,8 @@ router.post("/reset-password", authLimiter, async (req, res) => {
     if (!token || !newPassword) {
       return res.status(400).json({ error: "Token and new password are required" });
     }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ error: "Password must be at least 8 characters" });
-    }
+    const pwError = validatePassword(newPassword);
+    if (pwError) return res.status(400).json({ error: pwError });
 
     const [resetRecord] = await db.select().from(passwordResetTokensTable)
       .where(eq(passwordResetTokensTable.token, token)).limit(1);

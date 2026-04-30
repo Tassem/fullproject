@@ -7,6 +7,7 @@ import { checkAiImagePermission, deductAiImageCredits, refundAiImageCredits } fr
 import { buildPromptFromTitle, buildPromptFromImageAnalysis, buildPromptFromCustomPrompt } from "../lib/promptDirector";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 
 import { generateImage } from "../lib/imageProviderRouter";
 
@@ -32,7 +33,7 @@ async function generateImageViaRouter(prompt: string, aspectRatio: string): Prom
 
   const buf = result.images[0];
   const ext = detectExt(buf);
-  const filename = `aibg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const filename = `aibg-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
   fs.writeFileSync(path.join(RESULTS_DIR, filename), buf);
   return `${NANO_RESULTS_SERVE}${filename}`;
 }

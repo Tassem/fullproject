@@ -7,6 +7,44 @@ import { invalidateEffectiveLimitsCache } from "../lib/planGuard";
 import { invalidateSettingsCache } from "../lib/settings";
 import { testNanobananaConnection, clearNanobananaCache } from "../lib/nanobananaClient";
 import { db as workspaceDb } from "@workspace/db"; // Alias if needed, but we already have db
+import { z } from "zod";
+
+const patchUserSchema = z.object({
+  plan: z.string().max(50).optional(),
+  isAdmin: z.boolean().optional(),
+});
+
+const grantPointsSchema = z.object({
+  amount: z.coerce.number().int(),
+  description: z.string().max(200).optional(),
+  type: z.enum(["earn", "spend", "refund"]).optional(),
+});
+
+const createPlanSchema = z.object({
+  slug: z.string().min(1).max(50),
+  name: z.string().max(100).optional(),
+  description: z.string().max(500).optional(),
+  monthly_credits: z.coerce.number().int().min(0).optional(),
+  max_sites: z.coerce.number().int().min(0).optional(),
+  max_templates: z.coerce.number().int().min(0).optional(),
+  max_saved_designs: z.coerce.number().int().min(0).optional(),
+  has_blog_automation: z.boolean().optional(),
+  has_image_generator: z.boolean().optional(),
+  has_ai_image_generation: z.boolean().optional(),
+  has_telegram_bot: z.boolean().optional(),
+  has_api_access: z.boolean().optional(),
+  has_overlay_upload: z.boolean().optional(),
+  has_custom_watermark: z.boolean().optional(),
+  has_priority_processing: z.boolean().optional(),
+  has_priority_support: z.boolean().optional(),
+  rate_limit_daily: z.coerce.number().int().min(0).optional(),
+  rate_limit_hourly: z.coerce.number().int().min(0).optional(),
+  price_monthly: z.coerce.number().min(0).optional(),
+  price_yearly: z.coerce.number().min(0).optional(),
+  sort_order: z.coerce.number().int().optional(),
+  is_active: z.boolean().optional(),
+  is_free: z.boolean().optional(),
+});
 
 const router = Router();
 
@@ -95,8 +133,15 @@ router.get("/usage", requireAdmin, async (_req, res) => {
 });
 
 // GET /admin/users
-router.get("/users", requireAdmin, async (_req, res) => {
-  const users = await db.select().from(usersTable);
+router.get("/users", requireAdmin, async (req, res) => {
+  const page = Math.max(1, parseInt(String(req.query.page ?? "1"), 10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit ?? "50"), 10) || 50));
+  const offset = (page - 1) * limit;
+
+  const [totalRow] = await db.select({ count: count() }).from(usersTable);
+  const total = Number(totalRow?.count ?? 0);
+
+  const users = await db.select().from(usersTable).limit(limit).offset(offset);
   const formatted = await Promise.all(users.map(async (u) => {
     const [articlesRow] = await db.select({ count: count() }).from(articlesTable)
       .where(eq(articlesTable.user_id, u.id));
@@ -106,13 +151,16 @@ router.get("/users", requireAdmin, async (_req, res) => {
       sites_used: Number(sitesRow?.count ?? 0),
     });
   }));
-  return res.json({ users: formatted });
+  return res.json({ users: formatted, total, page, limit, pages: Math.ceil(total / limit) });
 });
 
 // PATCH /admin/users/:id
 router.patch("/users/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const { plan, isAdmin } = req.body;
+  const parsed = patchUserSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+
+  const { plan, isAdmin } = parsed.data;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   if (!user) return res.status(404).json({ error: "User not found" });
@@ -143,8 +191,9 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
 // POST /admin/users/:id/grant-points
 router.post("/users/:id/grant-points", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
-  const { amount, description, type } = req.body;
-  if (!amount || isNaN(Number(amount))) return res.status(400).json({ error: "amount is required" });
+  const parsed = grantPointsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+  const { amount, description, type } = parsed.data;
 
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, id)).limit(1);
   if (!user) return res.status(404).json({ error: "User not found" });
@@ -219,8 +268,9 @@ router.get("/plans", requireAdmin, async (_req, res) => {
 
 // POST /admin/plans
 router.post("/plans", requireAdmin, async (req, res) => {
-  const body = req.body;
-  if (!body.slug) return res.status(400).json({ error: "slug is required" });
+  const parsed = createPlanSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.issues });
+  const body = parsed.data;
 
   const [plan] = await db.insert(plansTable).values({
     name: body.name || body.slug,
