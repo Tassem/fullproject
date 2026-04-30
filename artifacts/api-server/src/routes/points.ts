@@ -3,6 +3,7 @@ import { db } from "@workspace/db";
 import { creditTransactionsTable, usersTable, systemSettingsTable, plansTable } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { getCardBaseCost, getBlogArticleCost } from "../lib/costService";
 
 const router = Router();
 
@@ -20,8 +21,8 @@ router.get("/", requireAuth, async (req, res) => {
     .orderBy(desc(creditTransactionsTable.createdAt))
     .limit(100);
 
-  const burnPerCard    = parseInt(await getSetting("points_burn_per_card",    "1"));
-  const burnPerArticle = parseInt(await getSetting("points_burn_per_article", "5"));
+  const burnPerCard    = await getCardBaseCost();
+  const burnPerArticle = await getBlogArticleCost();
 
   return res.json({
     monthly_credits: user.monthly_credits ?? 0,

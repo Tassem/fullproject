@@ -121,13 +121,15 @@ export function UpgradeModal({
       });
 
       if (r.status === 409) {
-        setStep("success");
+        const e = await r.json().catch(() => ({}));
+        alert(e.message || "You already have a pending request for this.");
+        onOpenChange(false);
         return;
       }
       if (!r.ok) throw new Error("Submission failed");
       setStep("success");
-    } catch (err) {
-      alert("Failed to submit. Please try again.");
+    } catch (err: any) {
+      alert(err.message || "Failed to submit. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -217,7 +219,11 @@ export function UpgradeModal({
                   <span className="text-xl shrink-0">⏳</span>
                   <div>
                     <p className="text-sm font-black text-amber-400">Request already under review</p>
-                    <p className="text-xs text-zinc-500 mt-1">You already sent a payment request for this plan. Please wait for admin review before submitting again.</p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      {isPoints
+                        ? "You already have a pending credits request. Please wait for admin approval."
+                        : "You already have a pending request for this plan. Please wait for admin approval."}
+                    </p>
                   </div>
                 </div>
               )}

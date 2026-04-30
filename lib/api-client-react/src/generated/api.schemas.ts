@@ -28,6 +28,15 @@ export interface LoginBody {
 
 export type UserProfilePlanDetails = { [key: string]: unknown } | null;
 
+export interface UserCredits {
+  monthly: number;
+  purchased: number;
+  total: number;
+  reset_date?: string | null;
+  daily_usage?: number;
+}
+
+
 export interface UserProfile {
   id: number;
   name: string;
@@ -35,7 +44,10 @@ export interface UserProfile {
   plan: string;
   apiKey: string;
   imagesToday: number;
-  credits?: number | null;
+  credits?: UserCredits;
+  monthly_credits?: number;
+  purchased_credits?: number;
+  total_credits?: number;
   articlesThisMonth?: number | null;
   isAdmin: boolean;
   botCode?: string | null;
@@ -44,6 +56,7 @@ export interface UserProfile {
   planDetails?: UserProfilePlanDetails;
   createdAt: string;
 }
+
 
 export interface AuthResponse {
   token: string;

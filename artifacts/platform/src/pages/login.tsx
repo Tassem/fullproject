@@ -149,6 +149,9 @@ export default function Login() {
                 {...register("password")}
               />
               {errors.password && <div style={{ fontSize: 12, color: "#fca5a5", marginTop: 5 }}>{errors.password.message}</div>}
+              <div style={{ textAlign: "right", marginTop: 4 }}>
+                <Link href="/forgot-password" style={{ fontSize: 13, color: ACCENT2, textDecoration: "none", fontWeight: 500 }}>Forgot password?</Link>
+              </div>
             </div>
 
             <button type="submit" disabled={isPending} style={{

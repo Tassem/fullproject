@@ -6,6 +6,19 @@ interface OpenAICompatResponse {
   error?: { message?: string };
 }
 
+// ── Helper to build endpoint URLs safely (prevents double-appending) ──
+function buildEndpointUrl(baseUrl: string, suffix: string): string {
+  const cleanBase = baseUrl.replace(/\/+$/, "");
+  const cleanSuffix = suffix.startsWith("/") ? suffix : `/${suffix}`;
+  
+  // If base already contains the suffix (e.g. user provided full URL)
+  if (cleanBase.endsWith(cleanSuffix.replace(/\/$/, ""))) {
+    return cleanBase;
+  }
+  
+  return `${cleanBase}${cleanSuffix}`;
+}
+
 // ── Generic OpenAI-compatible caller (works for OpenAI, custom providers, OpenRouter) ──
 export async function callOpenAICompat(
   baseUrl: string,
@@ -339,7 +352,7 @@ export async function generateImageOpenAI(
   }
 
   // Standard OpenAI-compatible /images/generations
-  const url = baseUrl.replace(/\/$/, "") + "/images/generations";
+  const url = buildEndpointUrl(baseUrl, "/images/generations");
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -538,7 +551,7 @@ export async function generateImageNanobanana(
   width = 1024,
   height = 1024
 ): Promise<{ jobId: string }> {
-  const url = baseUrl.replace(/\/$/, "") + "/generate";
+  const url = buildEndpointUrl(baseUrl, "/generate");
   const res = await fetch(url, {
     method: "POST",
     headers: {
@@ -568,7 +581,10 @@ export async function pollNanobananaTask(
   maxWaitMs = 180000
 ): Promise<string> {
   const deadline = Date.now() + maxWaitMs;
-  const pollUrl = baseUrl.replace(/\/$/, "") + `/jobs/${jobId}`;
+  const pollUrl = buildEndpointUrl(
+    baseUrl.replace(/\/images\/generations\/?$/, "").replace(/\/generate\/?$/, ""),
+    `/jobs/${jobId}`
+  );
   
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 5000));

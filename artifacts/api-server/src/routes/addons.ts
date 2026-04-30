@@ -82,7 +82,8 @@ router.post("/purchase", requireAuth, async (req, res) => {
     .where(
       and(
         eq(paymentRequestsTable.userId, user.id),
-        eq(paymentRequestsTable.addonId as any, addonId),
+        eq(paymentRequestsTable.type, "addon_purchase"),
+        eq(paymentRequestsTable.addonId as any, Number(addonId)),
         eq(paymentRequestsTable.status, "pending")
       )
     )
@@ -91,7 +92,7 @@ router.post("/purchase", requireAuth, async (req, res) => {
   if (existing) {
     return res.status(409).json({
       error: "duplicate_pending",
-      message: "You already have a pending payment request for this addon.",
+      message: "You already have a pending payment request for this add-on. Please wait for admin approval.",
     });
   }
 

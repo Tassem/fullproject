@@ -48,6 +48,7 @@ router.get("/status", requireAuth, async (req, res) => {
       max_templates: effective?.max_templates ?? plan?.max_templates ?? null,
       max_saved_designs: effective?.max_saved_designs ?? plan?.max_saved_designs ?? null,
       rate_limit_daily: effectiveRateLimit,
+      has_ai_image_generation: !!effective?.features?.has_ai_image_generation || !!plan?.has_ai_image_generation,
       ...(effective?.features ?? {}),
     },
     subscription: sub ? {
@@ -69,8 +70,7 @@ router.get("/status", requireAuth, async (req, res) => {
       sites: {
         used: sitesUsed,
         max: effectiveMaxSites,
-        unlimited: effectiveMaxSites >= 999,
-        percentage: effectiveMaxSites >= 999 ? 0 : pct(sitesUsed, effectiveMaxSites),
+        percentage: effectiveMaxSites > 0 ? pct(sitesUsed, effectiveMaxSites) : 0,
       },
     },
   });

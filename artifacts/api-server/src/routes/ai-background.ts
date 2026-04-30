@@ -1,10 +1,14 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, plansTable, planAddonsTable, userAddonsTable } from "@workspace/db";
+import { usersTable, plansTable, planAddonsTable, userAddonsTable, settingsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { checkAiImagePermission, deductAiImageCredits, refundAiImageCredits } from "../lib/aiImagePermissions";
+import { buildPromptFromTitle, buildPromptFromImageAnalysis, buildPromptFromCustomPrompt } from "../lib/promptDirector";
 import path from "path";
 import fs from "fs";
+
+import { generateImage } from "../lib/imageProviderRouter";
 
 const router = Router();
 
@@ -13,240 +17,186 @@ if (!fs.existsSync(RESULTS_DIR)) fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
 const NANO_RESULTS_SERVE = "/api/nanobanana/results/";
 
-async function hasAiImageGeneration(userId: number): Promise<boolean> {
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-  if (!user) return false;
-
-  const [plan] = await db.select().from(plansTable).where(eq(plansTable.slug, user.plan)).limit(1);
-  if (plan?.has_ai_image_generation) return true;
-
-  const [addon] = await db
-    .select({ id: planAddonsTable.id })
-    .from(userAddonsTable)
-    .innerJoin(planAddonsTable, eq(userAddonsTable.addonId, planAddonsTable.id))
-    .where(
-      and(
-        eq(userAddonsTable.userId, userId),
-        eq(userAddonsTable.isActive, true),
-        eq(planAddonsTable.feature_key, "has_ai_image_generation")
-      )
-    )
-    .limit(1);
-
-  return !!addon;
-}
-
-async function generatePromptFromTitle(
-  title: string,
-  label?: string,
-  style = "photorealistic"
-): Promise<{ prompt: string; negativePrompt: string }> {
-  const baseUrl = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-  const apiKey  = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-
-  if (!baseUrl || !apiKey) {
-    return {
-      prompt: `Professional news background, ${style}, cinematic lighting, high quality, no text`,
-      negativePrompt: "text, words, letters, watermark, logo, blurry, low quality",
-    };
-  }
-
-  const system = `You are a creative director for a news media company.
-Given a news headline in Arabic and an optional category/label, generate an English image prompt for a professional news card background.
-
-Rules:
-1. The image must be ${style} or high-quality illustration
-2. Do NOT include any text, words, or letters in the image
-3. Leave space/areas suitable for text overlay (keep areas clean and uncluttered)
-4. Match the mood and topic of the headline
-5. Use professional lighting and composition
-6. The image should work as a news card background (subtle, not too busy)
-7. Output ONLY valid JSON with keys: prompt, negative_prompt`;
-
-  const userMsg = `Headline: ${title}${label ? `\nCategory: ${label}` : ""}\nStyle preference: ${style}`;
-
-  try {
-    const resp = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_completion_tokens: 300,
-        messages: [
-          { role: "system", content: system },
-          { role: "user",   content: userMsg },
-        ],
-      }),
-      signal: AbortSignal.timeout(20000),
-    });
-
-    const data = await resp.json() as any;
-    const raw = data?.choices?.[0]?.message?.content ?? "";
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return {
-        prompt: parsed.prompt || parsed.image_prompt || raw,
-        negativePrompt: parsed.negative_prompt || "text, words, letters, watermark, blurry, low quality",
-      };
-    }
-    return {
-      prompt: raw || `Professional news background, ${style} photography, cinematic lighting`,
-      negativePrompt: "text, words, letters, watermark, logo, blurry, low quality",
-    };
-  } catch {
-    return {
-      prompt: `Professional news background image, ${style}, cinematic lighting, high quality, suitable for text overlay`,
-      negativePrompt: "text, words, letters, watermark, logo, blurry, low quality, distorted",
-    };
-  }
-}
-
-const VEOAI_PAGE = "https://veoaifree.com/nano-banana-ulimited-ai-image-generator/";
-const VEOAI_AJAX = "https://veoaifree.com/wp-admin/admin-ajax.php";
-const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-let cachedNonce: { value: string; fetchedAt: number } | null = null;
-
-async function getVeoaiNonce(force = false): Promise<string> {
-  if (!force && cachedNonce && Date.now() - cachedNonce.fetchedAt < 30 * 60_000) {
-    return cachedNonce.value;
-  }
-  const resp = await fetch(VEOAI_PAGE, {
-    headers: { "User-Agent": UA, Accept: "text/html" },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!resp.ok) throw new Error(`veoaifree page ${resp.status}`);
-  const html = await resp.text();
-  const m = html.match(/"nonce"\s*:\s*"([a-z0-9]+)"/i);
-  if (!m) throw new Error("veoaifree: nonce not found");
-  cachedNonce = { value: m[1], fetchedAt: Date.now() };
-  return m[1];
-}
-
-function ratioFromAspect(aspect: string): string {
-  if (aspect === "1:1") return "IMAGE_ASPECT_RATIO_SQUARE";
-  if (aspect === "9:16") return "IMAGE_ASPECT_RATIO_PORTRAIT";
-  return "IMAGE_ASPECT_RATIO_LANDSCAPE";
-}
-
-function dataUriToBuffer(uri: string): Buffer {
-  const m = uri.match(/^data:[^;]+;base64,(.+)$/);
-  if (!m) throw new Error("Invalid data URI");
-  return Buffer.from(m[1], "base64");
-}
-
 function detectExt(buf: Buffer): string {
   if (buf[0] === 0x89 && buf[1] === 0x50) return "png";
   if (buf[0] === 0xff && buf[1] === 0xd8) return "jpg";
   return "png";
 }
 
-async function generateImageViaVeoai(prompt: string, aspectRatio: string): Promise<string> {
-  const ratio = ratioFromAspect(aspectRatio);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const nonce = await getVeoaiNonce(attempt > 0);
-    const body = new URLSearchParams({
-      action: "veo_video_generator",
-      nonce,
-      promptText: prompt,
-      totalImages: "1",
-      ratio,
-      actionType: "whisk_final_image",
-      dataCode: "", dataText: "", dataFlow: "", dataCode2: "", dataText2: "",
-    });
-    const resp = await fetch(VEOAI_AJAX, {
-      method: "POST",
-      headers: {
-        "User-Agent": UA,
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: VEOAI_PAGE,
-        Origin: "https://veoaifree.com",
-        Accept: "application/json, text/javascript, */*; q=0.01",
-      },
-      body: body.toString(),
-      signal: AbortSignal.timeout(180_000),
-    });
-    if (!resp.ok) throw new Error(`veoaifree HTTP ${resp.status}`);
-    const text = (await resp.text()).trim();
-    let parsed: any;
-    try { parsed = JSON.parse(text); } catch { throw new Error(`veoaifree non-JSON: ${text.slice(0, 200)}`); }
-    const success = parsed.success === true || parsed.success === "true";
-    if (!success) {
-      const reason = parsed.error || parsed.message || JSON.stringify(parsed).slice(0, 200);
-      if (attempt === 0 && /nonce|invalid|forbidden|csrf/i.test(reason)) {
-        cachedNonce = null;
-        continue;
-      }
-      throw new Error(`Nano Banana refused prompt: ${reason}`);
-    }
-    const uris: string[] = Array.isArray(parsed.data_uris) ? parsed.data_uris
-      : Array.isArray(parsed.data_uri) ? parsed.data_uri
-      : parsed.data_uri ? [parsed.data_uri] : [];
-    if (uris.length === 0) throw new Error("veoaifree: no images returned");
-    const buf = dataUriToBuffer(uris[0]);
-    const ext = detectExt(buf);
-    const filename = `aibg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    fs.writeFileSync(path.join(RESULTS_DIR, filename), buf);
-    return `${NANO_RESULTS_SERVE}${filename}`;
+async function generateImageViaRouter(prompt: string, aspectRatio: string): Promise<string> {
+  const result = await generateImage(prompt, { ratio: aspectRatio, count: 1 });
+  
+  if (!result.success) {
+    throw new Error(result.error || "Generation failed");
   }
-  throw new Error("veoaifree: exhausted retries");
+
+  const buf = result.images[0];
+  const ext = detectExt(buf);
+  const filename = `aibg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  fs.writeFileSync(path.join(RESULTS_DIR, filename), buf);
+  return `${NANO_RESULTS_SERVE}${filename}`;
 }
 
-router.post("/generate-prompt", requireAuth, async (req, res) => {
-  const user = (req as any).user;
-  const { title, label, style = "photorealistic" } = req.body;
-  if (!title) return res.status(400).json({ error: "title is required" });
 
-  const allowed = await hasAiImageGeneration(user.id);
-  if (!allowed) {
-    return res.status(403).json({
-      error: "AI Image Generation not available in your plan",
-      code: "FEATURE_DISABLED",
-      feature: "has_ai_image_generation",
-    });
+import { logGenerationAttempt, logGenerationSuccess, logGenerationFailure } from "../lib/logger";
+
+router.post("/generate", requireAuth, async (req, res) => {
+  const user = (req as any).user;
+  const { mode, titleText, imageUrl, customPrompt, aspectRatio = "16:9", style = "photorealistic" } = req.body;
+  
+  if (!["title", "image", "prompt"].includes(mode)) {
+    return res.status(400).json({ error: "Invalid mode" });
   }
 
-  const result = await generatePromptFromTitle(title, label, style);
-  return res.json(result);
-});
+  logGenerationAttempt({
+    userId: user.id,
+    mode,
+    headline: titleText || customPrompt || "image-mode"
+  });
 
-router.post("/generate-image", requireAuth, async (req, res) => {
-  const user = (req as any).user;
-  const { title, label, aspectRatio = "16:9", style = "photorealistic", customPrompt } = req.body;
-  if (!title && !customPrompt) return res.status(400).json({ error: "title or customPrompt is required" });
-
-  const allowed = await hasAiImageGeneration(user.id);
-  if (!allowed) {
-    return res.status(403).json({
-      error: "AI Image Generation not available in your plan",
-      code: "FEATURE_DISABLED",
-      feature: "has_ai_image_generation",
+  const perm = await checkAiImagePermission(user.id);
+  if (!perm.allowed) {
+    return res.status(perm.errorType === "insufficient_credits" ? 402 : 403).json({
+      success: false,
+      errorType: perm.errorType,
+      message: perm.reason || "Not allowed",
+      creditsDeducted: 0,
+      retryable: false
     });
   }
 
   let prompt: string;
-  let negativePrompt: string;
-
-  if (customPrompt) {
-    prompt = customPrompt;
-    negativePrompt = "text, words, letters, watermark, blurry, low quality";
-  } else {
-    const result = await generatePromptFromTitle(title, label, style);
-    prompt = result.prompt;
-    negativePrompt = result.negativePrompt;
-  }
+  let usedFallback = false;
+  let generationMethod: string = mode;
 
   try {
-    const imageUrl = await generateImageViaVeoai(prompt, aspectRatio);
-    return res.json({ imageUrl, prompt, negativePrompt });
+    if (mode === "prompt") {
+      const resPrompt = await buildPromptFromCustomPrompt(customPrompt, false, style);
+      prompt = resPrompt.finalPrompt;
+    } else if (mode === "image") {
+      try {
+        const resImg = await buildPromptFromImageAnalysis(imageUrl, style);
+        prompt = resImg.finalPrompt;
+        generationMethod = "image_analysis";
+      } catch (err) {
+        if (!titleText || titleText.length < 3) throw err;
+        prompt = (await buildPromptFromTitle(titleText, style)).finalPrompt;
+        generationMethod = "headline_fallback";
+      }
+    } else {
+      const resTitle = await buildPromptFromTitle(titleText, style);
+      prompt = resTitle.finalPrompt;
+      generationMethod = "headline";
+    }
+
+    // GENERATION WITH RETRY
+    let finalImageUrl: string | null = null;
+    let lastErr: any = null;
+    const maxAttempts = 3;
+
+    let finalAttempt = 1;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      finalAttempt = attempt;
+      try {
+        console.log(`🔄 Generation attempt ${attempt}/${maxAttempts}`);
+        finalImageUrl = await generateImageViaRouter(prompt, aspectRatio);
+        if (finalImageUrl) break;
+      } catch (err: any) {
+        lastErr = err;
+        if (err.message && err.message.includes("refused prompt")) {
+          console.log("NanoBanana refused prompt, simplifying...");
+          // Simplify: take first 5 comma-separated parts
+          const parts = prompt.split(",").map(p => p.trim());
+          prompt = parts.slice(0, 5).join(", ") + ", professional photography, high quality";
+          // If already simplified, try a very basic fallback
+          if (attempt === 2) {
+            prompt = "professional news media background, editorial lighting, clean composition";
+          }
+          continue;
+        }
+        
+        if (attempt < maxAttempts) {
+          const waitTime = Math.pow(2, attempt) * 1000;
+          await new Promise(r => setTimeout(r, waitTime));
+        }
+      }
+    }
+
+    if (!finalImageUrl) throw lastErr || new Error("Failed after retries");
+
+    // Deduct credits AFTER successful generation
+    const deduct = await deductAiImageCredits(user.id, "web", prompt);
+    if (!deduct.success) {
+      return res.status(402).json({
+        success: false,
+        errorType: "insufficient_credits",
+        message: deduct.error,
+        creditsDeducted: 0,
+        retryable: false
+      });
+    }
+
+    logGenerationSuccess({
+      userId: user.id,
+      method: generationMethod,
+      attempts: finalAttempt,
+      creditsUsed: deduct.creditsDeducted,
+      finalPrompt: prompt
+    });
+
+    return res.json({ 
+       success: true, 
+       imageUrl: finalImageUrl, 
+       usedPrompt: prompt,
+       mode,
+       generationMethod,
+       creditsDeducted: deduct.creditsDeducted,
+       message: usedFallback ? "Could not analyze image. Generated from headline instead." : undefined
+    });
   } catch (err: any) {
-    console.error("AI background generation failed:", err.message);
-    return res.status(500).json({ error: err.message || "Image generation failed" });
+    console.error("AI generation failed:", err.message);
+    
+    let errorType = "unknown";
+    let userMsg = "Something went wrong. Please try again. No credits were deducted.";
+    
+    if (err.message) {
+      const msgLower = err.message.toLowerCase();
+      if (msgLower.includes("aborted") || msgLower.includes("timeout")) {
+        errorType = "timeout";
+        userMsg = "Generation is taking too long. The service may be busy. Please try again. No credits were deducted.";
+      } else if (msgLower.includes("refused prompt") || msgLower.includes("uploaded image contains content")) {
+        errorType = "prompt_rejected";
+        userMsg = err.message.includes("The uploaded image") ? err.message : "This description could not be processed. Try rephrasing or use a different style. No credits were deducted.";
+      } else if (msgLower.includes("no images returned") || msgLower.includes("veoaifree")) {
+        errorType = "service_unavailable";
+        userMsg = "The image generation service is currently unavailable. Please try again in a few minutes. No credits were deducted.";
+      }
+    }
+    
+    logGenerationFailure({
+      userId: user.id,
+      error: err.message,
+      attempts: 3,
+      creditsRefunded: 0
+    });
+
+    return res.status(500).json({ 
+      success: false,
+      errorType,
+      message: userMsg,
+      creditsDeducted: 0,
+      retryable: true
+    });
   }
+});
+
+// Deprecated routes pointing to the new unified generator
+router.post("/generate-prompt", requireAuth, async (req, res) => {
+   return res.status(400).json({ error: "Use POST /api/ai-background/generate instead." });
+});
+
+router.post("/generate-image", requireAuth, async (req, res) => {
+   return res.status(400).json({ error: "Use POST /api/ai-background/generate instead." });
 });
 
 export default router;

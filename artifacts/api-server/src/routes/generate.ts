@@ -4,6 +4,7 @@ import { generatedImagesTable, templatesTable, usersTable } from "@workspace/db"
 import { eq, desc } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { deductCredits, restoreCredits } from "../lib/credits";
+import { getSetting, getSettingNumber } from "../lib/settings";
 
 import { renderCard } from "../lib/cardRenderer";
 import path from "path";
@@ -32,9 +33,10 @@ router.post("/", requireAuth, async (req, res) => {
   if (!title) return res.status(400).json({ error: "Title is required" });
 
   // ── Deduct credits BEFORE rendering ─────────────────────────────────────────
+  const baseCardCost = await getSettingNumber("card_generation_base_cost", 1);
   const result = await deductCredits(
     user.id,
-    1,
+    baseCardCost,
     "image_generator",
     "has_image_generator",
     `بطاقة: ${String(title).slice(0, 60)}`
@@ -91,7 +93,7 @@ router.post("/", requireAuth, async (req, res) => {
     });
   } catch (err) {
     console.error("Card render error:", err);
-    await restoreCredits(user.id, 1, "image_generator", "فشل الرندر");
+    await restoreCredits(user.id, baseCardCost, "image_generator", "فشل الرندر");
     return res.status(500).json({ error: "Failed to render card" });
   }
 
@@ -123,87 +125,105 @@ router.post("/", requireAuth, async (req, res) => {
 
 // ── POST /generate/from-builder — render from canvas layout JSON ──────────────
 router.post("/from-builder", requireAuth, async (req, res) => {
-  const user = (req as any).user as typeof usersTable.$inferSelect;
-  const { elements, canvasWidth, canvasHeight, title, backgroundSource, aiPrompt } = req.body as {
-    elements: any[];
-    canvasWidth: number;
-    canvasHeight: number;
-    title?: string;
-    backgroundSource?: "uploaded" | "ai_generated" | "template_default";
-    aiPrompt?: string;
-  };
-
-  if (!elements || !Array.isArray(elements)) {
-    return res.status(400).json({ error: "elements array is required" });
-  }
-
-  const isAiBackground = backgroundSource === "ai_generated";
-  const creditCost = isAiBackground ? 3 : 1;
-
-  // Deduct credits before rendering
-  const result = await deductCredits(
-    user.id,
-    creditCost,
-    "image_generator",
-    "has_image_generator",
-    isAiBackground
-      ? `بطاقة مع خلفية AI: ${title?.slice(0, 50) || "untitled"}`
-      : `Builder card: ${title?.slice(0, 60) || "untitled"}`
-  );
-
-  if (!result.ok) {
-    return res.status(result.code === "rate_limit" ? 429 : result.code === "feature_disabled" ? 403 : 402)
-      .json({ error: result.error });
-  }
-
-  const { renderFromCanvasLayout } = await import("../lib/cardRenderer");
-
-  const layout = {
-    width:    canvasWidth  || 540,
-    height:   canvasHeight || 540,
-    elements,
-  };
-  const exportW = (canvasWidth  || 540) * 2;
-  const exportH = (canvasHeight || 540) * 2;
-
-  let pngBuffer: Buffer;
   try {
-    pngBuffer = await renderFromCanvasLayout(layout, title || null, null, exportW, exportH, uploadsDir);
+    const user = (req as any).user as typeof usersTable.$inferSelect;
+    const { elements, canvasWidth, canvasHeight, title, backgroundSource, aiPrompt } = req.body as {
+      elements: any[];
+      canvasWidth: number;
+      canvasHeight: number;
+      title?: string;
+      backgroundSource?: "uploaded" | "ai_generated" | "template_default";
+      aiPrompt?: string;
+    };
+
+    if (!elements || !Array.isArray(elements)) {
+      return res.status(400).json({ error: "elements array is required" });
+    }
+
+    const aiCostPerGen = await getSettingNumber("ai_image_cost_per_generation", 2);
+    const baseCardCost = await getSettingNumber("card_generation_base_cost", 1);
+    
+    // Fix: Use getSetting instead of direct query to undefined settingsTable
+    const aiEnabledStr = await getSetting("ai_image_generation_enabled", "true");
+    const aiEnabled = aiEnabledStr === "true";
+
+    // Count elements that use AI images (from nanobanana results)
+    const aiLayersCount = elements.filter(el => el.src && el.src.includes("/api/nanobanana/results/")).length;
+    
+    if (aiLayersCount > 0 && !aiEnabled) {
+      return res.status(403).json({ 
+        error: "AI image generation is currently disabled", 
+        code: "AI_DISABLED" 
+      });
+    }
+
+    const creditCost = baseCardCost + (aiLayersCount * aiCostPerGen);
+
+    // Deduct credits before rendering
+    const result = await deductCredits(
+      user.id,
+      creditCost,
+      "image_generator",
+      "has_image_generator",
+      aiLayersCount > 0
+        ? `Builder card with ${aiLayersCount} AI layer(s): ${title?.slice(0, 50) || "untitled"}`
+        : `Builder card: ${title?.slice(0, 60) || "untitled"}`
+    );
+
+    if (!result.ok) {
+      return res.status(result.code === "rate_limit" ? 429 : result.code === "feature_disabled" ? 403 : 402)
+        .json({ error: result.error });
+    }
+
+    const { renderFromCanvasLayout } = await import("../lib/cardRenderer");
+
+    const layout = {
+      width:    canvasWidth  || 540,
+      height:   canvasHeight || 540,
+      elements,
+    };
+    const exportW = (canvasWidth  || 540) * 2;
+    const exportH = (canvasHeight || 540) * 2;
+
+    const pngBuffer = await renderFromCanvasLayout(layout, title || null, null, exportW, exportH, uploadsDir);
+
+    const outFilename = `card-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
+    fs.writeFileSync(path.join(uploadsDir, outFilename), pngBuffer);
+    const imageUrl = `/api/photo/file/${outFilename}`;
+
+    const derivedTitle = title ||
+      elements.find((e: any) => e.type === "text" && e.content)?.content?.slice(0, 120) ||
+      "Builder Card";
+
+    const [image] = await db.insert(generatedImagesTable).values({
+      userId: user.id,
+      templateId: null,
+      title:    derivedTitle,
+      subtitle: null,
+      label:    null,
+      imageUrl,
+      aspectRatio: `${canvasWidth}x${canvasHeight}`,
+      bannerColor: "#000000",
+      textColor:   "#ffffff",
+      font:        "Cairo",
+      backgroundSource: backgroundSource || "uploaded",
+      aiPrompt: aiPrompt || null,
+    }).returning();
+
+    return res.status(201).json({
+      ...image,
+      imageUrl,
+      creditsUsed: result.creditsUsed,
+      creditsRemaining: result.total,
+    });
   } catch (err) {
-    console.error("Builder render error:", err);
-    await restoreCredits(user.id, creditCost, "image_generator", "فشل رندر Builder");
-    return res.status(500).json({ error: "Failed to render card" });
+    console.error("[generate] Builder render error:", err);
+    // Note: We don't restore credits here because they might not have been deducted yet or we don't know the amount safely
+    return res.status(500).json({ 
+      error: "Server render failed", 
+      code: "RENDER_ERROR" 
+    });
   }
-
-  const outFilename = `card-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
-  fs.writeFileSync(path.join(uploadsDir, outFilename), pngBuffer);
-  const imageUrl = `/api/photo/file/${outFilename}`;
-
-  const derivedTitle = title ||
-    elements.find((e: any) => e.type === "text" && e.content)?.content?.slice(0, 120) ||
-    "Builder Card";
-
-  const [image] = await db.insert(generatedImagesTable).values({
-    userId: user.id,
-    templateId: null,
-    title:    derivedTitle,
-    subtitle: null,
-    label:    null,
-    imageUrl,
-    aspectRatio: `${canvasWidth}x${canvasHeight}`,
-    bannerColor: "#000000",
-    textColor:   "#ffffff",
-    font:        "Cairo",
-    backgroundSource: backgroundSource || "uploaded",
-    aiPrompt: aiPrompt || null,
-  }).returning();
-
-  return res.status(201).json({
-    ...image,
-    imageUrl,
-    creditsUsed: result.creditsUsed,
-    creditsRemaining: result.total,
-  });
 });
 
 // ── GET /generate/history ─────────────────────────────────────────────────────

@@ -7,6 +7,9 @@ export const usersTable = pgTable("users", {
   name: text("name").notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash"),
+  googleId: varchar("google_id", { length: 255 }).unique(),
+  authProvider: varchar("auth_provider", { length: 50 }).default("email"),
+  avatarUrl: text("avatar_url"),
   phone: text("phone"),
   plan: varchar("plan", { length: 50 }).notNull().default("free"),
 

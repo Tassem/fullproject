@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { Link } from "wouter";
 import { Zap, TrendingDown, TrendingUp, Clock, Package, Image, RefreshCw, ShoppingCart } from "lucide-react";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { getUserCredits } from "@/lib/creditUtils";
+
 
 interface Transaction {
   id: number;
@@ -73,9 +76,8 @@ export default function PointsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const monthly = data?.monthly_credits ?? 0;
-  const purchased = data?.purchased_credits ?? 0;
-  const total = monthly + purchased;
+  const { monthly, purchased, total } = getUserCredits(data);
+
   const earned = (data?.transactions ?? []).filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
   const spent = (data?.transactions ?? []).filter(t => t.amount < 0).reduce((s, t) => s + Math.abs(t.amount), 0);
   const dailyUsed = data?.daily_usage ?? 0;
@@ -102,9 +104,17 @@ export default function PointsPage() {
             <p style={{ margin: 0, fontSize: 13, color: "rgba(255,255,255,0.4)" }}>Track your balance and usage history</p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
-          <RefreshCw size={13} />
-          Resets: {formatResetDate(data?.reset_date ?? null)}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+          <Link href="/billing" style={{ textDecoration: "none" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#a78bfa", fontWeight: 700, background: "rgba(167,139,250,0.1)", padding: "6px 12px", borderRadius: 8, border: "1px solid rgba(167,139,250,0.2)", cursor: "pointer" }}>
+              <Package size={13} />
+              Feature Add-ons
+            </div>
+          </Link>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+            <RefreshCw size={13} />
+            Resets: {formatResetDate(data?.reset_date ?? null)}
+          </div>
         </div>
       </div>
 
@@ -120,9 +130,11 @@ export default function PointsPage() {
           {monthlyAlloc > 0 && (
             <>
               <div style={{ marginTop: 10, height: 4, borderRadius: 4, background: "rgba(56,189,248,0.15)" }}>
-                <div style={{ height: "100%", borderRadius: 4, background: "#38bdf8", width: `${100 - monthlyPct}%`, transition: "width .3s" }} />
+                <div style={{ height: "100%", borderRadius: 4, background: "#38bdf8", width: monthlyAlloc >= 999999 ? "0%" : `${100 - monthlyPct}%`, transition: "width .3s" }} />
               </div>
-              <div style={{ fontSize: 11, color: "rgba(56,189,248,0.5)", marginTop: 5 }}>{monthly} of {monthlyAlloc} remaining</div>
+              <div style={{ fontSize: 11, color: "rgba(56,189,248,0.5)", marginTop: 5 }}>
+                {monthlyAlloc >= 999999 ? "Unlimited" : `${monthly} of ${monthlyAlloc}`} remaining
+              </div>
             </>
           )}
         </div>

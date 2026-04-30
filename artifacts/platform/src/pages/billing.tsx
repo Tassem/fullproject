@@ -1,15 +1,16 @@
 import { useState } from "react";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
-  CreditCard, Zap, Globe, FileText, TrendingUp,
-  Calendar, ChevronRight, Star, Check, Clock, ArrowUpRight,
-  History, AlertCircle, RefreshCw, XCircle, Package,
-  Sparkles, Coins, Layers, X, Loader2, Puzzle,
+  CreditCard, Package, Check, Zap, ArrowRight, ShieldCheck, History, Coins, Calendar,
+  Globe, FileText, TrendingUp, ChevronRight, Star, Clock, ArrowUpRight,
+  AlertCircle, RefreshCw, XCircle, Sparkles, Layers, X, Loader2, Puzzle, HelpCircle,
 } from "lucide-react";
+import { getUserCredits } from "@/lib/creditUtils";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UpgradeModal } from "@/components/SaaS/UpgradeModal";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const AUTH = () => ({ Authorization: `Bearer ${localStorage.getItem("pro_token")}` });
 
@@ -42,7 +43,7 @@ interface BillingStatus {
       monthly: number; purchased: number; total: number;
       reset_date: string | null; daily_usage: number; daily_limit: number;
     };
-    sites: { used: number; max: number; unlimited: boolean; percentage: number };
+    sites: { used: number; max: number; percentage: number };
   };
 }
 
@@ -51,8 +52,9 @@ interface Plan {
   price_monthly: number; price_yearly: number;
   monthly_credits: number; max_sites: number;
   has_telegram_bot: boolean; has_blog_automation: boolean;
-  has_image_generator: boolean; has_api_access: boolean;
-  has_overlay_upload: boolean; has_custom_watermark: boolean;
+  has_image_generator: boolean; has_ai_image_generation: boolean;
+  has_api_access: boolean; has_overlay_upload: boolean;
+  has_custom_watermark: boolean; has_priority_support: boolean;
   is_active: boolean; sort_order: number;
 }
 
@@ -100,15 +102,21 @@ function AddonPurchaseModal({
         headers: { "Content-Type": "application/json", ...AUTH() },
         body: JSON.stringify({ addonId: addon.id, paymentMethod: method, proofDetails: proof }),
       });
-      if (!r.ok) {
-        const e = await r.json().catch(() => ({})) as any;
-        throw new Error(e.message || e.error || "Request failed");
-      }
-      setDone(true);
-      onSuccess();
-    } catch (err: any) {
-      alert(err.message);
-    } finally {
+        if (r.status === 409) {
+          const e = await r.json().catch(() => ({}));
+          alert(e.message || "Conflict: Addon already purchased or pending.");
+          onClose();
+          return;
+        }
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({})) as any;
+          throw new Error(e.message || e.error || "Request failed");
+        }
+        setDone(true);
+        onSuccess();
+      } catch (err: any) {
+        alert(err.message);
+      } finally {
       setSubmitting(false);
     }
   };
@@ -206,13 +214,13 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function LimitBar({ label, used, max, unlimited, percentage, icon: Icon, color }: {
+function LimitBar({ label, used, max, percentage, icon: Icon, color }: {
   label: string; used: number; max: number;
-  unlimited: boolean; percentage: number;
+  percentage: number;
   icon: React.ElementType; color: string;
 }) {
-  const isWarning = !unlimited && percentage >= 80;
-  const isDanger  = !unlimited && percentage >= 95;
+  const isWarning = percentage >= 80;
+  const isDanger  = percentage >= 95;
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -224,42 +232,59 @@ function LimitBar({ label, used, max, unlimited, percentage, icon: Icon, color }
           <span className={cn("text-xs font-black font-mono", isDanger ? "text-rose-400" : isWarning ? "text-amber-400" : "text-white")}>
             {used}
           </span>
-          <span className="text-xs text-zinc-600 font-mono">{unlimited ? "/ ∞" : `/ ${max}`}</span>
+          <span className="text-xs text-zinc-600 font-mono">/ {max >= 999999 ? "∞" : max.toLocaleString()}</span>
         </div>
       </div>
       <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-        {unlimited ? (
-          <div className="h-full bg-gradient-to-r from-emerald-500/50 to-emerald-400/20 rounded-full animate-pulse w-full" />
-        ) : (
-          <div
-            className={cn("h-full rounded-full transition-all duration-700",
-              isDanger ? "bg-gradient-to-r from-rose-600 to-rose-400"
-              : isWarning ? "bg-gradient-to-r from-amber-600 to-amber-400"
-              : "bg-gradient-to-r from-orange-600 to-orange-400")}
-            style={{ width: `${Math.min(percentage, 100)}%` }}
-          />
-        )}
+        <div
+          className={cn("h-full rounded-full transition-all duration-700",
+            isDanger ? "bg-gradient-to-r from-rose-600 to-rose-400"
+            : isWarning ? "bg-gradient-to-r from-amber-600 to-amber-400"
+            : "bg-gradient-to-r from-orange-600 to-orange-400")}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
       </div>
-      {!unlimited && (
-        <p className="text-[10px] text-zinc-600 font-medium">{Math.max(0, max - used)} remaining</p>
+      <p className="text-[10px] text-zinc-600 font-medium">{Math.max(0, max - used)} remaining</p>
+    </div>
+  );
+}
+
+function FAQItem({ q, a }: { q: string; a: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="border border-white/5 bg-white/[0.02] rounded-2xl overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-6 text-left"
+      >
+        <span className="text-sm font-bold text-white">{q}</span>
+        <ChevronRight className={cn("w-4 h-4 text-zinc-600 transition-transform", open && "rotate-90")} />
+      </button>
+      {open && (
+        <div className="px-6 pb-6 text-xs text-zinc-500 leading-relaxed animate-in slide-in-from-top-2 duration-300">
+          {a}
+        </div>
       )}
     </div>
   );
 }
 
-function PlanCard({ plan, currentPlanSlug, onUpgrade }: {
+function PlanCard({ plan, currentPlanSlug, onUpgrade, pendingRequest, rejectedRequest }: {
   plan: Plan; currentPlanSlug: string; onUpgrade: (plan: Plan) => void;
+  pendingRequest?: PaymentRequest; rejectedRequest?: PaymentRequest;
 }) {
   const isCurrent = plan.slug === currentPlanSlug;
   const isPopular = plan.slug === "pro";
   const features: string[] = [
-    plan.monthly_credits > 0       ? `${plan.monthly_credits} credits/month` : "",
+    plan.monthly_credits >= 999999 ? "Unlimited credits/month" : plan.monthly_credits > 0 ? `${plan.monthly_credits} credits/month` : "",
     plan.has_blog_automation       ? "Blog Automation"   : "",
     plan.has_telegram_bot          ? "Telegram Bot"      : "",
     plan.has_image_generator       ? "Image Generator"   : "",
+    plan.has_ai_image_generation   ? "AI Image Generation" : "",
     plan.has_api_access            ? "API Access"        : "",
     plan.has_overlay_upload        ? "Overlay Upload"    : "",
     plan.has_custom_watermark      ? "Custom Watermark"  : "",
+    plan.has_priority_support      ? "Priority Support"  : "",
   ].filter(Boolean);
 
   return (
@@ -295,7 +320,9 @@ function PlanCard({ plan, currentPlanSlug, onUpgrade }: {
       <div className="space-y-2 text-[11px] text-zinc-400 flex-1">
         <div className="flex items-center gap-2">
           <Globe className="w-3 h-3 text-orange-400" />
-          <span>{plan.max_sites === 0 ? "No sites" : plan.max_sites >= 999 ? "Unlimited sites" : `${plan.max_sites} site${plan.max_sites !== 1 ? "s" : ""}`}</span>
+          <span className={!plan.has_blog_automation ? "text-muted-foreground italic" : ""}>
+            {!plan.has_blog_automation ? "Not available" : (plan.max_sites === 0 ? "No sites" : `${plan.max_sites} site${plan.max_sites !== 1 ? "s" : ""}`)}
+          </span>
         </div>
         {features.map((f) => (
           <div key={f} className="flex items-center gap-2">
@@ -304,13 +331,26 @@ function PlanCard({ plan, currentPlanSlug, onUpgrade }: {
           </div>
         ))}
       </div>
-      {!isCurrent && (
+      {isCurrent ? (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-orange-500/20 bg-orange-500/5">
+          <Check className="w-3.5 h-3.5 text-orange-400" />
+          <span className="text-[11px] font-black text-orange-400 uppercase tracking-widest">Current Plan</span>
+        </div>
+      ) : pendingRequest ? (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5">
+          <Clock className="w-3.5 h-3.5 text-amber-400" />
+          <span className="text-[11px] font-black text-amber-400 uppercase tracking-widest">Pending Review</span>
+        </div>
+      ) : (
         <button
           onClick={() => onUpgrade(plan)}
           className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 bg-orange-600 hover:bg-orange-700 border border-orange-500/50 text-white"
         >
-          Select Plan <ArrowUpRight className="w-3.5 h-3.5" />
+          {rejectedRequest ? "Try Again" : "Upgrade Plan"} <ArrowUpRight className="w-3.5 h-3.5" />
         </button>
+      )}
+      {rejectedRequest && !pendingRequest && (
+        <p className="text-[9px] text-rose-400 font-bold text-center mt-1">Previous request rejected: {rejectedRequest.adminNotes}</p>
       )}
     </div>
   );
@@ -342,6 +382,8 @@ export function Billing() {
       if (!r.ok) throw new Error("Failed to fetch billing status");
       return r.json();
     },
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
   });
 
   const { data: plansData, isLoading: plansLoading } = useQuery<{ plans: Plan[] }>({
@@ -442,6 +484,9 @@ export function Billing() {
 
   const currentPlanSlug = billing?.plan?.name ?? "free";
   const sub = billing?.subscription;
+  const { monthly, purchased, total } = billing 
+    ? getUserCredits({ ...billing.plan, ...billing.usage, ...billing.usage?.credits }) 
+    : { monthly: 0, purchased: 0, total: 0 };
 
   return (
     <div className="p-8 space-y-10 max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -470,10 +515,40 @@ export function Billing() {
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-3xl font-black text-white font-mono">
-                  {billing.plan?.price_monthly === 0 ? "Free" : `$${billing.plan?.price_monthly ?? 0}`}
-                </p>
-                {(billing.plan?.price_monthly ?? 0) > 0 && <p className="text-xs text-zinc-500">/month</p>}
+                <div className="grid grid-cols-3 gap-4">
+                  <Card className="border-orange-500/20 bg-orange-500/5">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Monthly Plan</CardTitle>
+                      <Calendar className="h-4 w-4 text-orange-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{monthly}</div>
+                      <p className="text-[10px] text-muted-foreground mt-1">credits remaining</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-amber-500/20 bg-amber-500/5">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Purchased</CardTitle>
+                      <Coins className="h-4 w-4 text-amber-500" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{purchased}</div>
+                      <p className="text-[10px] text-muted-foreground mt-1">never expire</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-primary/5 border-primary/20">
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                      <CardTitle className="text-xs font-semibold uppercase tracking-wider text-primary">Total Balance</CardTitle>
+                      <Zap className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-primary">{total}</div>
+                      <p className="text-[10px] text-primary/60 mt-1">available now</p>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
             </div>
 
@@ -492,23 +567,70 @@ export function Billing() {
             )}
 
             {/* Usage Bars */}
-            <div className="space-y-5">
+            <div className="space-y-6">
               <LimitBar
                 label="Daily Operations"
                 used={billing.usage.credits.daily_usage}
                 max={billing.usage.credits.daily_limit}
-                unlimited={billing.usage.credits.daily_limit >= 999}
                 percentage={billing.usage.credits.daily_limit > 0 ? Math.round((billing.usage.credits.daily_usage / billing.usage.credits.daily_limit) * 100) : 0}
                 icon={Zap} color="text-amber-400"
               />
-              <LimitBar
-                label="Monthly Credits"
-                used={(billing.plan?.monthly_credits ?? 0) - billing.usage.credits.monthly}
-                max={billing.plan?.monthly_credits ?? 0}
-                unlimited={(billing.plan?.monthly_credits ?? 0) >= 9999}
-                percentage={billing.plan?.monthly_credits ? Math.round(((billing.plan.monthly_credits - billing.usage.credits.monthly) / billing.plan.monthly_credits) * 100) : 0}
-                icon={FileText} color="text-orange-400"
-              />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* 1. Plan Monthly Credits */}
+                <div className="space-y-3 p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-orange-400" />
+                      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Plan Monthly Credits</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-black text-white font-mono">
+                        {monthly} / {(billing.plan as any)?.monthly_credits ?? 0}
+                      </span>
+                      <span className="text-[10px] text-zinc-600 font-bold uppercase">remaining</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-orange-600 to-orange-400 transition-all duration-700"
+                      style={{ width: `${(billing.plan as any)?.monthly_credits ? Math.min(100, Math.round((monthly / (billing.plan as any).monthly_credits) * 100)) : 0}%` }}
+                    />
+                  </div>
+                  {billing.usage.credits.reset_date && (
+                    <p className="text-[10px] text-zinc-500 font-medium">
+                      Resets on: <span className="text-zinc-400">{formatDate(billing.usage.credits.reset_date)}</span>
+                    </p>
+                  )}
+                </div>
+
+                {/* 2. Purchased Credits */}
+                <div className="space-y-3 p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Purchased Credits</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-black text-white font-mono">{purchased}</span>
+                      <span className="text-[10px] text-zinc-600 font-bold uppercase">available</span>
+                    </div>
+                  </div>
+                  <div className="h-2 bg-white/5 rounded-full" />
+                  <p className="text-[10px] text-zinc-500 font-medium italic">These do not expire</p>
+                </div>
+              </div>
+
+              {/* Consumption Order Tip */}
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-500/5 border border-blue-500/10">
+                <HelpCircle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                <div className="text-[10px] text-zinc-400 leading-relaxed">
+                  <span className="font-bold text-blue-400 uppercase tracking-tighter mr-1">Usage Rule:</span>
+                  Credits are consumed in this order: <span className="text-zinc-300 font-bold">1. Monthly credits</span>, then <span className="text-zinc-300 font-bold">2. Purchased credits</span>. 
+                  Purchased credits can be used for all services but do not unlock features exclusive to higher plans.
+                </div>
+              </div>
+
               <LimitBar
                 label={
                   (billing.effective && billing.plan &&
@@ -518,7 +640,6 @@ export function Billing() {
                 }
                 used={billing.usage.sites.used}
                 max={billing.usage.sites.max}
-                unlimited={billing.usage.sites.unlimited}
                 percentage={billing.usage.sites.percentage}
                 icon={Globe} color="text-blue-400"
               />
@@ -532,8 +653,8 @@ export function Billing() {
             </p>
 
             <div className="flex-1 flex flex-col items-center justify-center gap-2 my-4">
-              <span className="text-6xl font-black text-white font-mono tracking-tighter">{creditsTotal}</span>
-              <span className="text-[11px] text-zinc-500 font-bold uppercase tracking-widest">points available</span>
+              <span className="text-6xl font-black text-white font-mono tracking-tighter">{billing.usage.credits.total}</span>
+              <span className="text-[11px] text-zinc-500 font-bold uppercase tracking-widest">Total Available Credits</span>
             </div>
 
             {/* Quick presets */}
@@ -579,10 +700,17 @@ export function Billing() {
               </div>
               <button
                 onClick={handleLoadPoints}
-                className="w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                disabled={myRequests.some(r => r.type === "points_purchase" && r.status === "pending")}
+                className="w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
               >
-                <Zap className="w-3.5 h-3.5" />
-                Load {customPoints} PT — {customPoints * pointPrice} MAD
+                {myRequests.some(r => r.type === "points_purchase" && r.status === "pending") ? (
+                  <Clock className="w-3.5 h-3.5" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                {myRequests.some(r => r.type === "points_purchase" && r.status === "pending") 
+                  ? "Credits request pending..." 
+                  : `Load ${customPoints} PT — ${customPoints * pointPrice} MAD`}
               </button>
             </div>
 
@@ -620,6 +748,8 @@ export function Billing() {
                 plan={plan}
                 currentPlanSlug={currentPlanSlug}
                 onUpgrade={handleUpgradeClick}
+                pendingRequest={myRequests.find(r => r.planId === plan.id && r.status === "pending")}
+                rejectedRequest={myRequests.find(r => r.planId === plan.id && r.status === "rejected")}
               />
             ))}
           </div>
@@ -704,6 +834,9 @@ export function Billing() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {availableAddons.map(addon => {
               const isActive = myAddons.some(a => a.addonId === addon.id);
+              const pendingReq = myRequests.find(r => r.type === "addon_purchase" && (r as any).addonId === addon.id && r.status === "pending");
+              const rejectedReq = myRequests.find(r => r.type === "addon_purchase" && (r as any).addonId === addon.id && r.status === "rejected");
+
               const typeIcon = addon.type === "feature" ? <Sparkles className="w-4 h-4 text-purple-400" />
                 : addon.type === "credits" ? <Coins className="w-4 h-4 text-amber-400" />
                 : <Layers className="w-4 h-4 text-blue-400" />;
@@ -715,12 +848,21 @@ export function Billing() {
                   "relative rounded-2xl border p-5 flex flex-col gap-4 transition-all duration-300",
                   isActive
                     ? "border-emerald-500/40 bg-emerald-500/5 shadow-[0_0_30px_rgba(16,185,129,0.08)]"
+                    : pendingReq
+                    ? "border-amber-500/30 bg-amber-500/5"
                     : "border-white/5 bg-white/[0.02] hover:border-white/10 hover:bg-white/[0.03]"
                 )}>
                   {isActive && (
                     <div className="absolute -top-2.5 right-4 px-2.5 py-0.5 bg-emerald-500 rounded-full">
                       <span className="text-[9px] font-black text-white uppercase tracking-widest flex items-center gap-1">
                         <Check className="w-2.5 h-2.5" /> Active
+                      </span>
+                    </div>
+                  )}
+                  {pendingReq && (
+                    <div className="absolute -top-2.5 right-4 px-2.5 py-0.5 bg-amber-500 rounded-full">
+                      <span className="text-[9px] font-black text-white uppercase tracking-widest flex items-center gap-1">
+                        <Clock className="w-2.5 h-2.5" /> Pending
                       </span>
                     </div>
                   )}
@@ -738,24 +880,113 @@ export function Billing() {
                     {addon.is_recurring && <span className="text-xs text-zinc-500 font-bold">/mo</span>}
                     {!addon.is_recurring && <span className="text-xs text-zinc-500 font-bold">one-time</span>}
                   </div>
-                  {!isActive ? (
-                    <button
-                      onClick={() => { setSelectedAddon(addon); setAddonModalOpen(true); }}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white"
-                    >
-                      Add to Plan <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
+                  
+                  {isActive ? (
                     <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
                       <span className="text-[11px] font-black text-emerald-400 uppercase tracking-widest">Active</span>
                     </div>
+                  ) : pendingReq ? (
+                    <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-400 text-[11px] font-black uppercase tracking-widest">
+                      <Clock className="w-3.5 h-3.5" /> Pending Review
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => { setSelectedAddon(addon); setAddonModalOpen(true); }}
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white"
+                    >
+                      {rejectedReq ? "Try Again" : "Buy Now"} <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  {rejectedReq && !pendingReq && (
+                    <p className="text-[9px] text-rose-400 font-bold text-center mt-1">Rejected: {rejectedReq.adminNotes}</p>
                   )}
                 </div>
               );
             })}
           </div>
         )}
+      </div>
+
+      {/* Comparison Table */}
+      <div className="mt-12">
+        <div className="flex items-center gap-4 mb-6">
+          <Layers className="w-4 h-4 text-zinc-500" />
+          <h2 className="text-lg font-bold text-white tracking-tight">Compare Plans</h2>
+        </div>
+        <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[800px]">
+            <thead>
+              <tr className="border-b border-white/5 bg-white/[0.02]">
+                <th className="p-6 text-[10px] font-black text-zinc-600 uppercase tracking-widest">Feature</th>
+                {plansData?.plans.sort((a, b) => a.sort_order - b.sort_order).map(p => (
+                  <th key={p.id} className="p-6 text-center">
+                    <p className="text-xs font-black text-white uppercase tracking-tight">{p.name}</p>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-1">${p.price_monthly}/mo</p>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {[
+                { label: "Monthly Credits", key: "monthly_credits" },
+                { label: "WordPress Sites", key: "max_sites" },
+                { label: "Daily Capacity", key: "rate_limit_daily" },
+                { label: "Blog Automation", key: "has_blog_automation", isBool: true },
+                { label: "Telegram Bot", key: "has_telegram_bot", isBool: true },
+                { label: "Image Generator", key: "has_image_generator", isBool: true },
+                { label: "AI Image Gen", key: "has_ai_image_generation", isBool: true },
+                { label: "API Access", key: "has_api_access", isBool: true },
+                { label: "Custom Watermark", key: "has_custom_watermark", isBool: true },
+                { label: "Priority Support", key: "has_priority_support", isBool: true },
+              ].map(feat => (
+                <tr key={feat.key} className="hover:bg-white/[0.01] transition-colors">
+                  <td className="p-5 text-xs font-bold text-zinc-400">{feat.label}</td>
+                  {plansData?.plans.sort((a, b) => a.sort_order - b.sort_order).map(p => {
+                    const val = (p as any)[feat.key];
+                    return (
+                      <td key={p.id} className="p-5 text-center">
+                        {feat.isBool ? (
+                          val ? <Check className="w-4 h-4 text-emerald-500 mx-auto" /> : <XCircle className="w-4 h-4 text-zinc-800 mx-auto" />
+                        ) : (
+                          <span className="text-xs font-black text-white font-mono">
+                            {val >= 999999 ? "∞" : val}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* FAQ Section */}
+      <div className="mt-12 mb-12">
+        <div className="flex items-center gap-4 mb-6">
+          <HelpCircle className="w-4 h-4 text-zinc-500" />
+          <h2 className="text-lg font-bold text-white tracking-tight">Frequently Asked Questions</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <FAQItem
+            q="What are monthly credits?"
+            a="Monthly credits are your monthly quota for generating articles and high-quality AI images. They reset at the start of each billing cycle."
+          />
+          <FAQItem
+            q="What happens if I run out of credits?"
+            a="You can still use the basic features, or you can purchase 'Fuel Reservoir' points to top up your account instantly without changing your plan."
+          />
+          <FAQItem
+            q="Can I cancel my subscription?"
+            a="Yes, you can cancel at any time from this dashboard. You will keep your access until the end of your current billing period."
+          />
+          <FAQItem
+            q="How do I get support?"
+            a="Our support team is available via the Help Center. Pro and Business users get priority response times."
+          />
+        </div>
       </div>
 
       {/* Payment History */}
@@ -796,11 +1027,12 @@ export function Billing() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-white text-sm capitalize">
                             {req.type === "points_purchase" ? "Points Purchase"
-                              : req.type === "addon_purchase" ? "Add-on Purchase"
+                              : req.type === "addon_purchase" ? (req as any).addonName || "Add-on Purchase"
                               : "Plan Upgrade"}
                           </span>
                           {req.planName && <span className="text-xs text-zinc-500">→ {req.planName}</span>}
                           {req.pointsAmount && <span className="text-xs text-amber-400 font-bold">{req.pointsAmount} PT</span>}
+                          {(req as any).addonPrice && <span className="text-xs text-zinc-500">— ${(req as any).addonPrice}</span>}
                           <span className={cn("px-2 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-widest", badge.cls)}>
                             {badge.label}
                           </span>

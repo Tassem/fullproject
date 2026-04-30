@@ -85,13 +85,15 @@ export async function getActiveUserAddons(userId: number) {
     );
 }
 
+import { PlanFeatures } from "@workspace/db"; 
+
 export type EffectiveLimits = {
   max_sites: number | null;
   max_templates: number | null;
   max_saved_designs: number | null;
   rate_limit_daily: number | null;
   /** boolean features: ON via plan OR an active feature addon */
-  features: Record<string, boolean>;
+  features: Partial<PlanFeatures>;
 };
 
 /**
@@ -112,21 +114,32 @@ export async function getEffectiveLimits(userId: number): Promise<EffectiveLimit
   let max_templates: number | null = plan?.max_templates ?? null;
   let max_saved_designs: number | null = plan?.max_saved_designs ?? null;
   let rate_limit_daily: number | null = plan?.rate_limit_daily ?? null;
+  const features: Partial<PlanFeatures> = {};
 
-  const features: Record<string, boolean> = {};
   if (plan) {
-    for (const f of [
+    // Boolean features
+    const booleanFlags = [
       "has_telegram_bot", "has_blog_automation", "has_image_generator",
       "has_api_access", "has_overlay_upload", "has_custom_watermark",
       "has_ai_image_generation", "has_priority_processing", "has_priority_support",
-    ] as const) {
-      features[f] = !!(plan as any)[f];
+    ] as const;
+
+    for (const f of booleanFlags) {
+      features[f] = !!plan[f];
     }
+
+    // Number features
+    features.monthly_credits = plan.monthly_credits;
+    features.max_sites = plan.max_sites;
+    features.max_templates = plan.max_templates;
+    features.max_saved_designs = plan.max_saved_designs;
+    features.rate_limit_daily = plan.rate_limit_daily;
   }
 
   for (const addon of addons) {
     if (addon.type === "feature" && addon.feature_key) {
-      features[addon.feature_key] = true;
+      // Explicitly set the feature to true if granted by an active addon
+      (features as any)[addon.feature_key] = true;
     } else if (addon.type === "limit" && addon.limit_key && addon.limit_value) {
       switch (addon.limit_key) {
         case "max_sites":

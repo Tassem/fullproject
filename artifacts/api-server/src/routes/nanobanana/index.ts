@@ -4,6 +4,9 @@ import path from "path";
 import fs from "fs";
 import { requireAuth } from "../../lib/auth";
 
+import { generateNanobananaImage } from "../../lib/nanobananaClient";
+import { checkAiImagePermission, deductAiImageCredits } from "../../lib/aiImagePermissions";
+
 const router = Router();
 
 interface NanoJob {
@@ -19,6 +22,8 @@ interface NanoJob {
   height: number;
   count: number;
   seed: number;
+  userId: number;
+  creditsDeducted?: number;
 }
 
 const jobs = new Map<string, NanoJob>();
@@ -32,104 +37,9 @@ function makeId() {
   return `nano-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// ─── veoaifree.com (Google Nano Banana / Whisk) — no cookies, public nonce ────
-const VEOAI_PAGE = "https://veoaifree.com/nano-banana-ulimited-ai-image-generator/";
-const VEOAI_AJAX = "https://veoaifree.com/wp-admin/admin-ajax.php";
-const UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
-
-let cachedNonce: { value: string; fetchedAt: number } | null = null;
-
-async function getVeoaiNonce(force = false): Promise<string> {
-  if (!force && cachedNonce && Date.now() - cachedNonce.fetchedAt < 30 * 60_000) {
-    return cachedNonce.value;
-  }
-  const resp = await fetch(VEOAI_PAGE, {
-    headers: { "User-Agent": UA, Accept: "text/html" },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!resp.ok) throw new Error(`veoaifree page ${resp.status}`);
-  const html = await resp.text();
-  const m = html.match(/"nonce"\s*:\s*"([a-z0-9]+)"/i);
-  if (!m) throw new Error("veoaifree: nonce not found in page");
-  cachedNonce = { value: m[1], fetchedAt: Date.now() };
-  return m[1];
-}
-
 function ratioFromSize(w: number, h: number): string {
   if (Math.abs(w - h) < 50) return "IMAGE_ASPECT_RATIO_SQUARE";
   return w > h ? "IMAGE_ASPECT_RATIO_LANDSCAPE" : "IMAGE_ASPECT_RATIO_PORTRAIT";
-}
-
-function dataUriToBuffer(uri: string): Buffer {
-  const m = uri.match(/^data:[^;]+;base64,(.+)$/);
-  if (!m) throw new Error("Invalid data URI");
-  return Buffer.from(m[1], "base64");
-}
-
-function expandShortPrompt(p: string): string {
-  const trimmed = p.trim();
-  if (trimmed.length >= 25 && trimmed.split(/\s+/).length >= 4) return trimmed;
-  return `${trimmed}, high quality, photorealistic, detailed, sharp focus, professional lighting`;
-}
-
-async function generateWithVeoai(
-  prompt: string,
-  width: number,
-  height: number,
-  count: number
-): Promise<Buffer[]> {
-  const ratio = ratioFromSize(width, height);
-  const effectivePrompt = expandShortPrompt(prompt);
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const nonce = await getVeoaiNonce(attempt > 0);
-    const body = new URLSearchParams({
-      action: "veo_video_generator",
-      nonce,
-      promptText: effectivePrompt,
-      totalImages: String(count),
-      ratio,
-      actionType: "whisk_final_image",
-      dataCode: "",
-      dataText: "",
-      dataFlow: "",
-      dataCode2: "",
-      dataText2: "",
-    });
-    const resp = await fetch(VEOAI_AJAX, {
-      method: "POST",
-      headers: {
-        "User-Agent": UA,
-        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
-        "X-Requested-With": "XMLHttpRequest",
-        Referer: VEOAI_PAGE,
-        Origin: "https://veoaifree.com",
-        Accept: "application/json, text/javascript, */*; q=0.01",
-      },
-      body: body.toString(),
-      signal: AbortSignal.timeout(180_000),
-    });
-    if (!resp.ok) throw new Error(`veoaifree HTTP ${resp.status}`);
-    const text = (await resp.text()).trim();
-    let parsed: any;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error(`veoaifree: non-JSON response: ${text.slice(0, 200)}`);
-    }
-    const success = parsed.success === true || parsed.success === "true";
-    if (!success) {
-      const reason = parsed.error || parsed.message || (typeof parsed.data === "string" ? parsed.data : parsed.data?.message || parsed.data?.error) || text.slice(0, 200);
-      if (attempt === 0 && /nonce|invalid|forbidden|csrf/i.test(reason)) {
-        cachedNonce = null;
-        continue;
-      }
-      throw new Error(`Nano Banana refused this prompt: ${reason}`);
-    }
-    const uris: string[] = Array.isArray(parsed.data_uris) ? parsed.data_uris : (Array.isArray(parsed.data_uri) ? parsed.data_uri : (parsed.data_uri ? [parsed.data_uri] : []));
-    if (uris.length === 0) throw new Error("veoaifree: no images in response");
-    return uris.map(dataUriToBuffer);
-  }
-  throw new Error("veoaifree: exhausted retries");
 }
 
 function detectExt(buf: Buffer): string {
@@ -151,8 +61,20 @@ async function runJob(job: NanoJob) {
   job.startedAt = Date.now();
   jobs.set(job.id, job);
   try {
-    const buffers = await generateWithVeoai(job.prompt, job.width, job.height, job.count);
-    job.images = buffers.map((b, i) => saveBuffer(b, job.id, i));
+    const ratio = ratioFromSize(job.width, job.height);
+    const result = await generateNanobananaImage(job.prompt, { ratio, count: job.count });
+    if (!result.success) throw new Error(result.error || "Generation failed");
+    
+    job.images = result.images.map((b, i) => saveBuffer(b, job.id, i));
+    
+    // Deduct credits after success
+    const deduct = await deductAiImageCredits(job.userId, "api", job.prompt, job.count);
+    if (deduct.success) {
+      job.creditsDeducted = deduct.creditsDeducted;
+    } else {
+      console.error(`[Nanobanana] Credit deduction failed for user ${job.userId}:`, deduct.error);
+    }
+    
     job.status = "done";
   } catch (err: any) {
     job.status = "failed";
@@ -167,9 +89,22 @@ router.get("/", (req: Request, res: Response) => {
   res.json({ ok: true, message: "Nanobanana router is active" });
 });
 
-router.post("/generate", async (req: Request, res: Response) => {
+router.post("/generate", requireAuth, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!user?.id) return res.status(401).json({ error: "Unauthorized" });
+
   const { prompt, width = 1024, height = 1024, count = 1, seed } = req.body;
   if (!prompt) return res.status(400).json({ error: "prompt is required" });
+
+  // Check permission before creating job
+  const perm = await checkAiImagePermission(user.id);
+  if (!perm.allowed) {
+    return res.status(perm.errorType === "insufficient_credits" ? 402 : 403).json({
+      error: perm.errorType,
+      message: perm.reason
+    });
+  }
+
   const job: NanoJob = {
     id: makeId(),
     prompt: prompt.trim(),
@@ -178,6 +113,7 @@ router.post("/generate", async (req: Request, res: Response) => {
     images: [],
     width, height, count,
     seed: seed || Math.floor(Math.random() * 1000000),
+    userId: user.id,
   };
   jobs.set(job.id, job);
   runJob(job);
@@ -192,6 +128,7 @@ router.get("/jobs/:id", (req: Request, res: Response) => {
     status: job.status,
     images: job.images,
     error: job.error,
+    creditsDeducted: job.creditsDeducted
   });
 });
 
@@ -206,27 +143,29 @@ router.get("/test-status", (req: Request, res: Response) => {
   res.json({ ok: true, message: "Nanobanana router is active and reachable" });
 });
 
-// ─── OpenAI Compatible Endpoint ──────────────────────────────────────────────
+// OpenAI Compatible Endpoints
 router.get("/v1/models", (req: Request, res: Response) => {
   res.json({
     object: "list",
-    data: [
-      {
-        id: "nano-banana",
-        object: "model",
-        created: 1776960000,
-        owned_by: "nanobanana",
-        permission: [],
-        root: "nano-banana",
-        parent: null,
-      }
-    ]
+    data: [{ id: "nano-banana", object: "model", created: 1776960000, owned_by: "nanobanana" }]
   });
 });
 
-router.post("/v1/images/generations", async (req: Request, res: Response) => {
-  const { prompt, n = 1, size = "1024x1024", model } = req.body;
+router.post("/v1/images/generations", requireAuth, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!user?.id) return res.status(401).json({ error: "Unauthorized" });
+
+  const { prompt, n = 1, size = "1024x1024" } = req.body;
   if (!prompt) return res.status(400).json({ error: "prompt is required" });
+
+  // Check permission before generation
+  const perm = await checkAiImagePermission(user.id);
+  if (!perm.allowed) {
+    return res.status(perm.errorType === "insufficient_credits" ? 402 : 403).json({
+      error: perm.errorType,
+      message: perm.reason
+    });
+  }
 
   let [width, height] = [1024, 1024];
   if (typeof size === "string" && size.includes("x")) {
@@ -235,36 +174,38 @@ router.post("/v1/images/generations", async (req: Request, res: Response) => {
     height = parseInt(parts[1]) || 1024;
   }
 
-  const job: NanoJob = {
-    id: makeId(),
-    prompt: prompt.trim(),
-    status: "pending",
-    createdAt: Date.now(),
-    images: [],
-    width, height, count: n,
-    seed: Math.floor(Math.random() * 1000000),
-  };
+  const ratio = ratioFromSize(width, height);
   
-  jobs.set(job.id, job);
-
   try {
-    const buffers = await generateWithVeoai(job.prompt, job.width, job.height, job.count);
-    const imageUrls = buffers.map((b, i) => saveBuffer(b, job.id, i));
-    
+    const result = await generateNanobananaImage(prompt, { ratio, count: n });
+
+    if (!result.success) {
+      return res.status(500).json({ error: { message: result.error, type: "invalid_request_error" } });
+    }
+
+    // Deduct credits after success
+    const deduct = await deductAiImageCredits(user.id, "api", prompt, n);
+    if (!deduct.success) {
+      return res.status(402).json({
+        error: "INSUFFICIENT_CREDITS",
+        message: "رصيدك غير كافٍ"
+      });
+    }
+
     const protocol = req.headers["x-forwarded-proto"] || req.protocol;
     const host = req.headers["x-forwarded-host"] || req.get("host");
-    const fullUrls = imageUrls.map(path => `${protocol}://${host}${path}`);
+    const fullUrls = result.images.map((b, i) => `${protocol}://${host}${saveBuffer(b, makeId(), i)}`);
 
     return res.json({
       created: Math.floor(Date.now() / 1000),
-      data: fullUrls.map(url => ({ url, revised_prompt: job.prompt }))
+      data: fullUrls.map(url => ({ url, revised_prompt: prompt })),
+      creditsDeducted: deduct.creditsDeducted
     });
   } catch (err: any) {
     return res.status(500).json({
       error: {
         message: err.message,
-        type: "invalid_request_error",
-        code: "generation_failed"
+        type: "server_error"
       }
     });
   }

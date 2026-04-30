@@ -3,18 +3,20 @@ import { Router } from "express";
 import { db, rssFeedsTable, usersTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { requireFeature } from "../lib/permissions";
 
 const router = Router();
+const blogAuth = [requireAuth, requireFeature("has_blog_automation")];
 
 // GET /api/rss — list RSS feeds for current user
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", ...blogAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const feeds = await db.select().from(rssFeedsTable).where(eq(rssFeedsTable.user_id, user.id));
   return res.json(feeds);
 });
 
 // GET /api/rss/site/:siteId — feeds for a specific site
-router.get("/site/:siteId", requireAuth, async (req, res) => {
+router.get("/site/:siteId", ...blogAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const siteId = parseInt(req.params.siteId);
   if (isNaN(siteId)) return res.status(400).json({ error: "Invalid siteId" });
@@ -25,7 +27,7 @@ router.get("/site/:siteId", requireAuth, async (req, res) => {
 });
 
 // POST /api/rss — create a new RSS feed
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", ...blogAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const b = req.body as Record<string, any>;
   const siteId = b.siteId ?? b.site_id;
@@ -50,7 +52,7 @@ router.post("/", requireAuth, async (req, res) => {
 });
 
 // PUT /api/rss/:id — update a feed
-router.put("/:id", requireAuth, async (req, res) => {
+router.put("/:id", ...blogAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
@@ -76,7 +78,7 @@ router.put("/:id", requireAuth, async (req, res) => {
 });
 
 // DELETE /api/rss/:id
-router.delete("/:id", requireAuth, async (req, res) => {
+router.delete("/:id", ...blogAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
@@ -86,7 +88,7 @@ router.delete("/:id", requireAuth, async (req, res) => {
 });
 
 // PATCH /api/rss/:id/toggle — toggle active status
-router.patch("/:id/toggle", requireAuth, async (req, res) => {
+router.patch("/:id/toggle", ...blogAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const id = parseInt(req.params.id);
   const [current] = await db.select().from(rssFeedsTable).where(and(eq(rssFeedsTable.id, id), eq(rssFeedsTable.user_id, user.id))).limit(1);

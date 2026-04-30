@@ -12,9 +12,11 @@ import { Button } from "@/components/ui/button";
 import {
   Image as ImageIcon, Layers, Target, Clock, KeySquare,
   Rss, FileText, CheckCircle2, AlertCircle, Zap, Activity,
-  TrendingUp, Globe, Bot
+  TrendingUp, Globe, Bot, Coins, Calendar
 } from "lucide-react";
 import { Link } from "wouter";
+import { getUserCredits } from "@/lib/creditUtils";
+
 
 function StatCard({
   title, value, sub, icon: Icon, accent = false
@@ -65,8 +67,10 @@ export default function Dashboard() {
   const { data: recentActivity, isLoading: activityLoading } = useGetRecentActivity({ query: { queryKey: getGetRecentActivityQueryKey(), enabled: !!token } });
 
   const isLoading = userLoading || cardLoading || blogLoading || pipelineLoading || activityLoading;
+  const { monthly, purchased, total } = getUserCredits(user);
 
   const cardUsagePercent = cardStats ? Math.min(100, Math.round(((cardStats as any).daily_usage / (cardStats as any).daily_limit) * 100)) : 0;
+
   const isNearLimit = cardUsagePercent > 80;
 
   return (
@@ -88,7 +92,7 @@ export default function Dashboard() {
             </Link>
           </Button>
           <Button asChild>
-            <Link href="/generate">
+            <Link href="/template-builder">
               <ImageIcon className="mr-2 h-4 w-4" />
               Create Card
             </Link>
@@ -109,12 +113,12 @@ export default function Dashboard() {
           ) : (<>
             <Card className={isNearLimit ? "border-destructive/30 bg-destructive/5" : ""}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-medium">Today's Cards</CardTitle>
-                <Clock className={`h-4 w-4 ${isNearLimit ? "text-destructive" : "text-muted-foreground"}`} />
+                <CardTitle className="text-sm font-medium">Today's Operations</CardTitle>
+                <Zap className={`h-4 w-4 ${isNearLimit ? "text-destructive" : "text-muted-foreground"}`} />
               </CardHeader>
               <CardContent>
                 <div className={`text-2xl font-bold ${isNearLimit ? "text-destructive" : ""}`}>{(cardStats as any)?.daily_usage ?? 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">of {(cardStats as any)?.daily_limit ?? 0} daily limit</p>
+                <p className="text-xs text-muted-foreground mt-1">of {(cardStats as any)?.daily_limit ?? 0} daily capacity</p>
                 <Progress
                   value={cardUsagePercent}
                   className={`mt-3 h-2 ${isNearLimit ? "bg-destructive/20 [&>div]:bg-destructive" : ""}`}
@@ -127,7 +131,7 @@ export default function Dashboard() {
             <StatCard
               title="Plan"
               value={cardStats?.plan === "pro" ? "Pro" : "Free"}
-              sub={cardStats?.plan === "pro" ? "Full access" : "Daily usage limit"}
+              sub={cardStats?.plan === "pro" ? "Full access" : "Daily operation limit"}
               icon={Target}
             />
 
@@ -140,6 +144,68 @@ export default function Dashboard() {
                 accent
               />
             )}
+          </>)}
+        </div>
+      </div>
+
+      {/* ── Credits Overview ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <Coins className="h-5 w-5 text-amber-500" />
+          <h2 className="text-lg font-semibold">Credits Overview</h2>
+          <Badge variant="secondary" className="bg-amber-500/10 text-amber-600 border-amber-500/20">Balance</Badge>
+        </div>
+        <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+          {isLoading ? (
+            [1,2,3].map(i => <SkeletonCard key={i} />)
+          ) : (<>
+            <Card className="border-orange-500/20 bg-orange-500/5">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Monthly Plan Credits</CardTitle>
+                <Calendar className="h-4 w-4 text-orange-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {monthly} / {(user as any)?.planDetails?.monthly_credits ?? 0}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">remaining this month</p>
+                {user?.credits_reset_date && (
+                  <p className="text-[10px] text-muted-foreground mt-2 border-t pt-2 border-orange-500/10">
+                    Resets on: {new Date(user.credits_reset_date).toLocaleDateString()}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Purchased Credits</CardTitle>
+                <Coins className="h-4 w-4 text-amber-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{purchased}</div>
+                <p className="text-xs text-muted-foreground mt-1">available for all services</p>
+                <p className="text-[10px] text-emerald-500 font-medium mt-2 border-t pt-2 border-border/50">
+                  Do not expire
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-primary/5 border-primary/20">
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium">Total Available</CardTitle>
+                <Zap className="h-4 w-4 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-black text-primary">{total}</div>
+                <div className="mt-3 p-2 rounded-md bg-primary/10 text-[10px] text-primary/80 leading-snug">
+                  <span className="font-bold uppercase tracking-tighter block mb-1">Consumption Order:</span>
+                  1. Monthly credits first <br />
+                  2. Purchased credits second
+                </div>
+              </CardContent>
+            </Card>
+
           </>)}
         </div>
       </div>
@@ -218,7 +284,7 @@ export default function Dashboard() {
           <CardContent className="grid gap-2">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">News Cards</div>
             <Button variant="outline" className="justify-start" asChild>
-              <Link href="/generate"><ImageIcon className="mr-2 h-4 w-4" />Create News Card</Link>
+              <Link href="/template-builder"><ImageIcon className="mr-2 h-4 w-4" />Create News Card</Link>
             </Button>
             <Button variant="outline" className="justify-start" asChild>
               <Link href="/templates"><Layers className="mr-2 h-4 w-4" />Manage Templates</Link>

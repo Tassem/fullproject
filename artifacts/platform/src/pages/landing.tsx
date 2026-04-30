@@ -17,9 +17,13 @@ interface Plan {
   id: number; name: string; slug: string; description: string | null;
   price_monthly: number; price_yearly: number;
   monthly_credits: number; max_sites: number;
-  rate_limit_daily: number;
+  max_templates: number; max_saved_designs: number;
+  rate_limit_daily: number; rate_limit_hourly: number;
   has_telegram_bot: boolean;
   has_blog_automation: boolean; has_image_generator: boolean;
+  has_api_access: boolean; has_overlay_upload: boolean;
+  has_custom_watermark: boolean; has_priority_processing: boolean;
+  has_priority_support: boolean; has_ai_image_generation: boolean;
   is_active: boolean; sort_order: number; is_free: boolean;
 }
 interface SiteInfo { settings: Record<string, string>; plans: Plan[]; }
@@ -41,22 +45,36 @@ const T = {
     pricing_popular: "Most Popular",
     pricing_cta: "Get Started",
     pricing_free_cta: "Start Free",
-    pricing_unlimited: "Unlimited",
     per_month: "/month", per_year: "/year",
     faq_badge: "FAQ",
     testimonials_badge: "Testimonials",
     contact_title: "Need Help?", contact_subtitle: "We're always here for you",
     cta_badge: "Ready to Start?",
     footer_rights: "All rights reserved.",
-    unlimited: "Unlimited",
-    feature_cards: "cards/day",
-    feature_articles: "articles/month",
+    feature_credits: "credits/month",
     feature_sites: "WordPress sites",
     feature_blog: "Blog Automation",
     feature_image: "News Card Generator",
     feature_telegram: "Telegram Bot",
-    feature_credits: "credits included",
+    feature_api: "API Access",
+    feature_watermark: "Custom Watermark",
+    feature_overlay: "Overlay Upload",
+    feature_ai_image: "AI Image Generation",
+    feature_priority: "Priority Support",
+    feature_no_sites: "No sites",
     billing_yearly: "Billed annually",
+    compare_title: "Compare Plans",
+    compare_feature: "Feature",
+    compare_monthly_credits: "Monthly Credits",
+    compare_sites: "WordPress Sites",
+    compare_blog: "Blog Automation",
+    compare_telegram: "Telegram Bot",
+    compare_api: "API Access",
+    compare_ai_image: "AI Image Generation",
+    compare_watermark: "Custom Watermark",
+    compare_priority: "Priority Support",
+    pricing_contact: "Contact Us",
+    feature_daily_limit: "operations/day",
   },
   ar: {
     login: "دخول", getStarted: "ابدأ مجاناً", startFree: "ابدأ مجاناً",
@@ -73,22 +91,36 @@ const T = {
     pricing_popular: "الأكثر طلباً",
     pricing_cta: "ابدأ الآن",
     pricing_free_cta: "ابدأ مجاناً",
-    pricing_unlimited: "غير محدود",
     per_month: "/شهر", per_year: "/سنة",
     faq_badge: "الأسئلة الشائعة",
     testimonials_badge: "آراء العملاء",
     contact_title: "تحتاج مساعدة؟", contact_subtitle: "نحن هنا دائماً من أجلك",
     cta_badge: "جاهز للبدء؟",
     footer_rights: "جميع الحقوق محفوظة.",
-    unlimited: "غير محدود",
-    feature_cards: "بطاقة/يوم",
-    feature_articles: "مقال/شهر",
+    feature_credits: "رصيد/شهر",
     feature_sites: "مواقع WordPress",
     feature_blog: "أتمتة المدونة",
     feature_image: "منشئ البطاقات الإخبارية",
     feature_telegram: "بوت تيليغرام",
-    feature_credits: "رصيد مُضمَّن",
+    feature_api: "الوصول عبر API",
+    feature_watermark: "علامة مائية مخصصة",
+    feature_overlay: "رفع تراكبات",
+    feature_ai_image: "توليد صور بالذكاء الاصطناعي",
+    feature_priority: "دعم أولوي",
+    feature_no_sites: "بدون مواقع",
     billing_yearly: "يُفوتر سنوياً",
+    compare_title: "مقارنة الباقات",
+    compare_feature: "الميزة",
+    compare_monthly_credits: "الرصيد الشهري",
+    compare_sites: "مواقع WordPress",
+    compare_blog: "أتمتة المدونة",
+    compare_telegram: "بوت تيليغرام",
+    compare_api: "الوصول عبر API",
+    compare_ai_image: "توليد صور بالذكاء الاصطناعي",
+    compare_watermark: "علامة مائية مخصصة",
+    compare_priority: "دعم أولوي",
+    pricing_contact: "تواصل معنا",
+    feature_daily_limit: "عملية/يوم",
   },
 };
 
@@ -107,7 +139,7 @@ const FEATURES = [
     color: "from-blue-500 to-cyan-500",
     bg: "bg-blue-500/10 border-blue-500/20",
     titleEn: "WordPress Auto-Publish", titleAr: "نشر تلقائي على WordPress",
-    descEn: "Connect unlimited WordPress sites and publish directly from the dashboard — fully automated.",
+    descEn: "Connect your WordPress sites and publish directly from the dashboard — fully automated.",
     descAr: "اربط مواقع WordPress وانشر المحتوى تلقائياً من لوحة التحكم دون أي تدخل يدوي.",
   },
   {
@@ -146,20 +178,20 @@ const FEATURES = [
 
 // ── Static FAQ ────────────────────────────────────────────────────────────────
 const DEFAULT_FAQ_EN = [
-  { q: "Is there a free plan?", a: "Yes! Our Free plan includes 5 cards/day and full access to the news card generator. No credit card required." },
-  { q: "Can I connect multiple WordPress sites?", a: "Yes. Depending on your plan, you can connect from 1 site (Starter) up to unlimited sites (Agency)." },
-  { q: "Which AI providers are supported?", a: "We support OpenAI (GPT-4), OpenRouter (Claude, Gemini, Mistral, etc.), Google Gemini, and custom AI endpoints." },
-  { q: "Is my content unique?", a: "Absolutely. Our pipeline rewrites content from source articles using AI, ensuring original, plagiarism-free output." },
-  { q: "Can I publish in any language?", a: "Yes. You can configure the AI prompt to generate content in any language including Arabic, English, French, etc." },
-  { q: "How does billing work?", a: "Plans are billed monthly or yearly. You can upgrade, downgrade, or cancel anytime from your account dashboard." },
+  { q: "What are credits?", a: "Credits are your usage currency. Each card generation costs 1 credit, each article costs 5 credits, and AI-generated backgrounds cost 3 credits." },
+  { q: "Can I upgrade/downgrade anytime?", a: "Yes! You can change your plan at any time from your Billing page. Changes take effect after your current billing cycle." },
+  { q: "What happens when I run out of credits?", a: "Your credits reset monthly based on your plan. You can also purchase additional credits from the Billing page without changing your plan." },
+  { q: "Do unused credits roll over?", a: "Monthly credits do not roll over. However, purchased credits never expire." },
+  { q: "What payment methods do you accept?", a: "We currently accept bank transfers and Vodafone Cash. More payment methods coming soon." },
+  { q: "Is there a free trial?", a: "Yes! The Free plan gives you 30 credits per month with no credit card required." },
 ];
 const DEFAULT_FAQ_AR = [
-  { q: "هل هناك خطة مجانية؟", a: "نعم! خطتنا المجانية تتضمن 5 بطاقات يومياً مع وصول كامل لمنشئ البطاقات. لا حاجة لبطاقة ائتمان." },
-  { q: "هل يمكنني ربط عدة مواقع WordPress؟", a: "نعم. بحسب خطتك يمكنك ربط من موقع واحد (Starter) حتى عدد غير محدود (Agency)." },
-  { q: "ما هي مزودات الذكاء الاصطناعي المدعومة؟", a: "ندعم OpenAI (GPT-4) وOpenRouter (Claude, Gemini, Mistral...) وGoogle Gemini وواجهات AI مخصصة." },
-  { q: "هل المحتوى فريد ومبتكر؟", a: "بالتأكيد. نظام الأتمتة يُعيد كتابة المحتوى بالكامل باستخدام الذكاء الاصطناعي لضمان الأصالة." },
-  { q: "هل يمكن النشر بأي لغة؟", a: "نعم. يمكنك ضبط نموذج الذكاء الاصطناعي لتوليد المحتوى بأي لغة (عربي، إنجليزي، فرنسي، إلخ)." },
-  { q: "كيف تعمل الفوترة؟", a: "الخطط تُفوتر شهرياً أو سنوياً. يمكنك الترقية أو التخفيض أو الإلغاء في أي وقت من لوحة حسابك." },
+  { q: "ما هي الرصيد (Credits)؟", a: "الرصيد هو عملتك للاستخدام. تكلفة إنشاء كل بطاقة رصيد 1، وكل مقال 5 أرصدة، والخلفيات المولدة بالذكاء الاصطناعي 3 أرصدة." },
+  { q: "هل يمكنني الترقية أو التخفيض في أي وقت؟", a: "نعم! يمكنك تغيير خطتك في أي وقت من صفحة الفوترة. التغييرات تسري بعد نهاية دورة الفوترة الحالية." },
+  { q: "ماذا يحدث عند نفاد الرصيد؟", a: "يتم إعادة تعيين الرصيد شهرياً حسب خطتك. يمكنك أيضاً شراء أرصدة إضافية من صفحة الفوترة دون تغيير خطتك." },
+  { q: "هل ينتقل الرصيد غير المستخدم للشهر التالي؟", a: "الرصيد الشهري لا ينتقل للشهر التالي. لكن الأرصدة المشتراة لا تنتهي صلاحيتها أبداً." },
+  { q: "ما طرق الدفع المقبولة؟", a: "نقبل حالياً التحويل البنكي وفودافون كاش. المزيد من طرق الدفع قريباً." },
+  { q: "هل هناك فترة تجريبية مجانية؟", a: "نعم! الخطة المجانية تمنحك 30 رصيد شهرياً بدون الحاجة لبطاقة ائتمان." },
 ];
 
 // ── Static Testimonials ───────────────────────────────────────────────────────
@@ -291,11 +323,35 @@ export default function Landing() {
     },
   ];
 
-  // FAQ
-  const faqs = DEFAULT_FAQ_EN.map((item, i) => ({
-    q: isAr ? (s[`landing_faq_${i + 1}_q_ar`] || DEFAULT_FAQ_AR[i].q) : (s[`landing_faq_${i + 1}_q`] || item.q),
-    a: isAr ? (s[`landing_faq_${i + 1}_a_ar`] || DEFAULT_FAQ_AR[i].a) : (s[`landing_faq_${i + 1}_a`] || item.a),
-  }));
+  // FAQ with dynamic costs
+  const cardCost = s.card_generation_base_cost || "1";
+  const articleCost = s.points_burn_per_article || "5";
+  const aiImageCost = s.ai_image_cost_per_generation || "2";
+  const signupBonus = s.signup_bonus_credits || "30";
+
+  const faqs = DEFAULT_FAQ_EN.map((item, i) => {
+    let q = isAr ? (s[`landing_faq_${i + 1}_q_ar`] || DEFAULT_FAQ_AR[i].q) : (s[`landing_faq_${i + 1}_q`] || item.q);
+    let a = isAr ? (s[`landing_faq_${i + 1}_a_ar`] || DEFAULT_FAQ_AR[i].a) : (s[`landing_faq_${i + 1}_a`] || item.a);
+
+    // Dynamic replacement for first FAQ (What are credits?)
+    if (i === 0) {
+      if (isAr) {
+        a = `الرصيد هو عملتك للاستخدام. تكلفة إنشاء كل بطاقة هو ${cardCost} رصيد، وكل مقال هو ${articleCost} أرصدة، وصورة الذكاء الاصطناعي هي ${aiImageCost} أرصدة.`;
+      } else {
+        a = `Credits are your usage currency. Each card generation costs ${cardCost} credit, each article costs ${articleCost} credits, and AI image generation costs ${aiImageCost} credits.`;
+      }
+    }
+    // Dynamic replacement for last FAQ (Free trial?)
+    if (i === 5) {
+      if (isAr) {
+        a = `نعم! الخطة المجانية تمنحك ${signupBonus} رصيد عند التسجيل شهرياً بدون الحاجة لبطاقة ائتمان.`;
+      } else {
+        a = `Yes! The Free plan gives you ${signupBonus} credits per month with no credit card required.`;
+      }
+    }
+
+    return { q, a };
+  });
 
   // Testimonials
   const testimonials = DEFAULT_TESTIMONIALS.map((t2, i) => ({
@@ -516,10 +572,9 @@ export default function Landing() {
             <Badge className="bg-indigo-500/15 text-indigo-300 border-indigo-500/30 mb-4 px-4 py-1.5 text-xs font-bold uppercase tracking-widest">
               {t.pricing_badge}
             </Badge>
-            <h2 className="text-3xl md:text-4xl font-black text-white mb-3">{pricingTitle}</h2>
+            <h2 className="text-3xl md:text-5xl font-black text-white mb-3">{pricingTitle}</h2>
             <p className="text-zinc-500 text-base mb-8">{pricingSub}</p>
 
-            {/* Billing Toggle */}
             <div className="inline-flex items-center gap-1 p-1 bg-white/[0.04] border border-white/8 rounded-xl">
               <button onClick={() => setBillingYearly(false)}
                 className={cn("px-5 py-2 rounded-lg text-sm font-semibold transition-all", !billingYearly ? "bg-indigo-600 text-white shadow-md" : "text-zinc-400 hover:text-white")}>
@@ -533,25 +588,35 @@ export default function Landing() {
             </div>
           </div>
 
-          <div className={cn("grid gap-6", plans.length === 1 ? "max-w-sm mx-auto" : plans.length === 2 ? "grid-cols-1 md:grid-cols-2 max-w-2xl mx-auto" : plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-4")}>
+          <div className={cn("grid gap-6", plans.length <= 2 ? "max-w-2xl mx-auto" : plans.length === 3 ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-4")}>
             {plans.map((plan) => {
               const isFree = plan.is_free || plan.price_monthly === 0;
-              const isPopular = plan.sort_order === 1 || (plans.length >= 3 && plan.sort_order === 1);
+              const isPopular = plan.slug === "starter" || plan.slug === "pro";
+              const isBusiness = plan.slug === "business";
               const price = billingYearly ? plan.price_yearly : plan.price_monthly;
+              const isUnlimited = plan.slug === "business" || plan.monthly_credits >= 999999;
+              const creditsLabel = isUnlimited
+                ? (isAr ? "رصيد غير محدود" : "Unlimited credits")
+                : plan.monthly_credits > 0 ? `${plan.monthly_credits.toLocaleString()} ${t.feature_credits}` : null;
+              const sitesLabel = plan.max_sites > 0 ? `${plan.max_sites} ${t.feature_sites}` : t.feature_no_sites;
+
               const features = [
-                plan.monthly_credits > 0 && `${plan.monthly_credits >= 999 ? t.unlimited : plan.monthly_credits} ${t.feature_credits}`,
-                plan.rate_limit_daily > 0 && `${plan.rate_limit_daily >= 999 ? t.unlimited : plan.rate_limit_daily} ${t.feature_cards}`,
-                plan.max_sites > 0 && `${plan.max_sites >= 999 ? t.unlimited : plan.max_sites} ${t.feature_sites}`,
-                plan.has_blog_automation && t.feature_blog,
-                plan.has_image_generator && t.feature_image,
-                plan.has_telegram_bot && t.feature_telegram,
+                creditsLabel,
+                `${plan.rate_limit_daily} ${t.feature_daily_limit}`,
+                sitesLabel,
+                plan.has_blog_automation ? (isAr ? "أتمتة المدونات" : "Blog Automation") : null,
+                plan.has_image_generator ? (isAr ? "مولد بطاقات الأخبار" : "News Card Generator") : null,
+                plan.has_telegram_bot ? (isAr ? "بوت تليجرام" : "Telegram Bot") : null,
+                plan.has_ai_image_generation ? (isAr ? "توليد الصور بالذكاء الاصطناعي" : "AI Image Generation") : null,
+                plan.has_api_access ? (isAr ? "الوصول إلى API" : "API Access") : null,
+                plan.has_priority_support ? (isAr ? "دعم ذو أولوية" : "Priority Support") : null,
               ].filter(Boolean);
 
               return (
                 <div key={plan.id} className={cn(
                   "relative p-6 rounded-2xl border transition-all duration-300 flex flex-col",
                   isPopular
-                    ? "border-indigo-500/50 bg-gradient-to-b from-indigo-500/10 to-purple-500/5 shadow-xl shadow-indigo-500/10"
+                    ? "border-indigo-500/50 bg-gradient-to-b from-indigo-500/10 to-purple-500/5 shadow-xl shadow-indigo-500/10 scale-[1.03] z-10"
                     : "border-white/8 bg-white/[0.02] hover:border-white/15"
                 )}>
                   {isPopular && (
@@ -562,7 +627,6 @@ export default function Landing() {
                     </div>
                   )}
 
-                  {/* Plan Header */}
                   <div className="mb-5">
                     <h3 className="font-black text-white text-xl mb-1">{plan.name}</h3>
                     <div className="flex items-end gap-1 mt-3">
@@ -582,7 +646,19 @@ export default function Landing() {
                     )}
                   </div>
 
-                  {/* Features */}
+                  <div className="mb-4 space-y-2">
+                    {creditsLabel && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Zap className="w-4 h-4 text-amber-400" />
+                        <span className="font-bold text-white">{creditsLabel}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-sm">
+                      <Globe className="w-4 h-4 text-blue-400" />
+                      <span className="text-zinc-300">{sitesLabel}</span>
+                    </div>
+                  </div>
+
                   <ul className="space-y-3 mb-6 flex-1">
                     {features.map((feature) => (
                       <li key={String(feature)} className="flex items-start gap-2.5 text-sm text-zinc-300">
@@ -592,19 +668,66 @@ export default function Landing() {
                     ))}
                   </ul>
 
-                  {/* CTA */}
                   {registrationEnabled && (
                     <Link href="/register">
                       <Button className={cn("w-full font-bold h-11", isPopular
                         ? "bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-700 hover:to-cyan-700 shadow-lg shadow-indigo-500/25"
                         : "bg-white/8 hover:bg-white/12 text-white border border-white/10")}>
-                        {isFree ? t.pricing_free_cta : t.pricing_cta}
+                        {isFree ? t.pricing_free_cta : isBusiness ? t.pricing_contact : t.pricing_cta}
                       </Button>
                     </Link>
                   )}
                 </div>
               );
             })}
+          </div>
+
+          {/* ── Compare Plans Table ──────────────────────────── */}
+          <div className="mt-20">
+            <h3 className="text-2xl font-black text-white text-center mb-8">{t.compare_title}</h3>
+            <div className="overflow-x-auto rounded-2xl border border-white/8">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/8 bg-white/[0.02]">
+                    <th className="text-left py-4 px-5 text-zinc-400 font-semibold">{t.compare_feature}</th>
+                    {plans.map(p => (
+                      <th key={p.id} className={cn("py-4 px-4 text-center font-bold", p.slug === "starter" || p.slug === "pro" ? "text-indigo-400" : "text-white")}>
+                        {p.name}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { label: t.compare_monthly_credits, render: (p: Plan) => (p.slug === "business" || p.monthly_credits >= 999999) ? (isAr ? "غير محدود" : "Unlimited") : p.monthly_credits.toLocaleString() },
+                    { label: t.compare_sites, render: (p: Plan) => p.max_sites === 0 ? "—" : String(p.max_sites) },
+                    { label: t.compare_blog, render: (p: Plan) => p.has_blog_automation },
+                    { label: t.compare_telegram, render: (p: Plan) => p.has_telegram_bot },
+                    { label: t.compare_api, render: (p: Plan) => p.has_api_access },
+                    { label: t.compare_ai_image, render: (p: Plan) => p.has_ai_image_generation },
+                    { label: t.compare_watermark, render: (p: Plan) => p.has_custom_watermark },
+                    { label: t.compare_priority, render: (p: Plan) => p.has_priority_support },
+                  ].map((row, i) => (
+                    <tr key={i} className={cn("border-b border-white/5", i % 2 === 0 ? "bg-white/[0.01]" : "")}>
+                      <td className="py-3.5 px-5 text-zinc-300 font-medium">{row.label}</td>
+                      {plans.map(p => {
+                        const val = row.render(p);
+                        const isBool = typeof val === "boolean";
+                        return (
+                          <td key={p.id} className="py-3.5 px-4 text-center">
+                            {isBool ? (
+                              val ? <Check className="w-5 h-5 text-emerald-400 mx-auto" /> : <X className="w-5 h-5 text-zinc-600 mx-auto" />
+                            ) : (
+                              <span className="text-white font-medium">{val}</span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
       )}

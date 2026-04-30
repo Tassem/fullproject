@@ -89,9 +89,9 @@ export default function SettingsPage() {
           <div className="bg-muted/40 rounded-lg p-3 mb-4">
             <div className="flex justify-between text-xs text-muted-foreground mb-1">
               <span>Daily Usage</span>
-              <span>{dailyUsage} / {dailyLimit === 999 ? "∞" : dailyLimit}</span>
+              <span>{dailyUsage} / {dailyLimit}</span>
             </div>
-            {dailyLimit > 0 && dailyLimit < 999 && (
+            {dailyLimit > 0 && (
               <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full"
@@ -104,7 +104,7 @@ export default function SettingsPage() {
           {/* Plan limits */}
           <div className="grid grid-cols-2 gap-3 mb-4">
             {[
-              { label: "Daily Limit", value: pd?.rate_limit_daily != null ? (pd.rate_limit_daily >= 999 ? "∞" : pd.rate_limit_daily) : "—" },
+              { label: "Daily Limit", value: pd?.rate_limit_daily != null ? pd.rate_limit_daily : "—" },
               { label: "Max Templates", value: pd?.max_templates != null ? (pd.max_templates <= 0 ? "—" : pd.max_templates) : "—" },
               { label: "Max Sites", value: pd?.max_sites != null ? (pd.max_sites <= 0 ? "—" : pd.max_sites) : "—" },
               { label: "Monthly Credits", value: pd?.monthly_credits != null ? pd.monthly_credits : "—" },

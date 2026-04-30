@@ -13,7 +13,7 @@ export const articlesTable = pgTable("articles", {
   rss_feed_id: integer("rss_feed_id").references(() => rssFeedsTable.id, { onDelete: "set null" }),
   wp_category_id: integer("wp_category_id"),
 
-  rss_link: text("rss_link"),
+  rss_link: text("rss_link").unique(),
   competitor_title: text("competitor_title"),
   competitor_description: text("competitor_description"),
   competitor_full_content: text("competitor_full_content"),

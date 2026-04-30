@@ -10,7 +10,7 @@ import {
   Award, Activity, ToggleLeft, AlertTriangle, Ban,
   Star, Bot, Coins, SlidersHorizontal, Link, Hash,
   Image as ImageIcon, Palette, Rss, Puzzle,
-  Sparkles, Package, ChevronDown
+  Sparkles, Package, ChevronDown, Loader2
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -436,10 +436,10 @@ function PaymentsTab() {
   });
 
   const denyMutation = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`/api/admin/payments/${id}/deny`, {
+    mutationFn: async (args: { id: number; adminNotes: string }) => {
+      const r = await fetch(`/api/admin/payments/${args.id}/deny`, {
         method: "POST", headers: { "Authorization": `Bearer ${localStorage.getItem("pro_token")}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: "Denied by admin" }),
+        body: JSON.stringify({ adminNotes: args.adminNotes }),
       });
       if (!r.ok) throw new Error("Denial failed");
     },
@@ -504,57 +504,90 @@ function PaymentsTab() {
             </div>
           )}
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {pending.map((req) => (
-              <div key={req.id} className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 hover:border-indigo-500/20 transition-all">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex gap-4 items-start">
-                    <div className="w-12 h-12 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400">
-                      {req.type === "plan_upgrade" ? <Layers className="w-6 h-6" /> : <Zap className="w-6 h-6" />}
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-black text-white">{req.userName}</span>
-                        <ArrowRight className="w-3 h-3 text-zinc-600" />
-                        <span className="text-xs text-indigo-400 font-bold">
-                          {req.planName || `${req.pointsAmount} Points`}
-                        </span>
-                      </div>
-                      <div className="text-[10px] text-zinc-500 font-mono flex items-center gap-3">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(req.createdAt).toLocaleString()}</span>
-                        <span className="flex items-center gap-1 text-amber-500"><AlertTriangle className="w-3 h-3" /> ID: {req.proofDetails?.slice(0, 24)}</span>
-                      </div>
-                      {/* Proof image if URL */}
-                      {req.proofDetails?.startsWith("http") && (
-                        <a href={req.proofDetails} target="_blank" rel="noopener noreferrer"
-                          className="text-[10px] text-blue-400 flex items-center gap-1 mt-1 hover:underline">
-                          <ExternalLink className="w-3 h-3" /> View Proof Screenshot
-                        </a>
-                      )}
-                      {!req.proofDetails?.startsWith("http") && req.proofDetails && (
-                        <p className="text-[10px] text-zinc-600 italic mt-1">"{req.proofDetails}"</p>
-                      )}
-                    </div>
+              <div key={req.id} className="p-6 rounded-[2rem] bg-white/[0.02] border border-white/5 hover:border-indigo-500/20 transition-all space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest">Pending Review</span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => denyMutation.mutate(req.id)}
-                      disabled={denyMutation.isPending}
-                      className="rounded-xl text-rose-400 hover:bg-rose-500/10"
-                    >
-                      <X className="w-4 h-4 mr-1" /> Deny
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => approveMutation.mutate(req.id)}
-                      disabled={approveMutation.isPending}
-                      className="rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white"
-                    >
-                      <Check className="w-4 h-4 mr-1" /> Approve
-                    </Button>
+                  <span className="text-[10px] text-zinc-600 font-mono">#{req.id}</span>
+                </div>
+
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center text-zinc-400">
+                    {req.userEmail?.[0]?.toUpperCase() ?? "U"}
                   </div>
+                  <div>
+                    <h3 className="text-sm font-black text-white">{req.userName}</h3>
+                    <p className="text-[10px] text-zinc-500 font-medium">{req.userEmail}</p>
+                    <Badge variant="outline" className="mt-1 text-[9px] h-4 bg-zinc-500/10 border-zinc-500/20 text-zinc-400">
+                      Current Plan: {req.userPlan}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Purchase Type</span>
+                    <Badge className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 uppercase text-[9px] font-black">
+                      {req.type?.replace(/_/g, " ")}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Item</span>
+                    <span className="text-sm font-black text-white">
+                      {req.type === "plan_upgrade" ? (req.planName || "Plan Upgrade") 
+                       : req.type === "addon_purchase" ? (req.addonName || "Addon")
+                       : req.type === "points_purchase" ? `${req.pointsAmount} Credits`
+                       : "Unknown"}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest">Price / Value</span>
+                    <span className="text-sm font-black text-amber-400 font-mono">
+                      {req.type === "addon_purchase" ? `${req.addonPrice || 0} MAD` : "See details"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-black text-zinc-600 uppercase tracking-widest">
+                    <span>Payment Proof ({req.paymentMethod})</span>
+                    <span>{new Date(req.createdAt).toLocaleString()}</span>
+                  </div>
+                  <div className="p-3 rounded-xl bg-black/40 border border-white/5 text-[11px] text-zinc-400 leading-relaxed italic">
+                    "{req.proofDetails}"
+                  </div>
+                  {req.proofDetails?.startsWith("http") && (
+                    <a href={req.proofDetails} target="_blank" rel="noopener noreferrer" 
+                      className="inline-flex items-center gap-1.5 text-[10px] text-indigo-400 font-bold hover:underline">
+                      <ExternalLink className="w-3.5 h-3.5" /> View External Proof
+                    </a>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 rounded-xl border-rose-500/20 bg-rose-500/5 text-rose-500 hover:bg-rose-500/10 hover:text-rose-400 h-11 text-[10px] font-black uppercase tracking-widest"
+                      onClick={() => {
+                        const note = prompt("Reason for rejection?");
+                        if (note !== null) denyMutation.mutate({ id: req.id, adminNotes: note });
+                      }}
+                    disabled={denyMutation.isPending}
+                  >
+                    <X className="w-3.5 h-3.5 mr-2" /> Reject
+                  </Button>
+                  <Button
+                    className="flex-[2] rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white h-11 text-[10px] font-black uppercase tracking-widest"
+                    onClick={() => approveMutation.mutate(req.id)}
+                    disabled={approveMutation.isPending}
+                  >
+                    {approveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5 mr-2" />}
+                    Approve Payment
+                  </Button>
                 </div>
               </div>
             ))}
@@ -666,6 +699,7 @@ const EMPTY_PLAN = {
   monthly_credits: 30, rate_limit_daily: 10,
   max_templates: 3, max_saved_designs: 5, max_sites: 0,
   has_blog_automation: false, has_image_generator: true,
+  has_ai_image_generation: false,
   has_api_access: false, has_telegram_bot: false,
   has_overlay_upload: false, has_custom_watermark: false,
   has_priority_support: false, has_priority_processing: false,
@@ -748,7 +782,7 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
         <p className="text-[9px] font-black uppercase text-zinc-600 mb-2 tracking-widest">🗞 Image Design</p>
         <div className="grid grid-cols-3 gap-3 mb-3">
           <div className="space-y-1">
-            <Label className="text-[10px] font-black uppercase text-zinc-500">Daily limit (999=∞)</Label>
+            <Label className="text-[10px] font-black uppercase text-zinc-500">Daily limit</Label>
             <Input type="number" value={plan.rate_limit_daily ?? 10} onChange={e => num("rate_limit_daily", e.target.value)}
               className="bg-black border-white/10 h-10 rounded-xl text-sm" />
           </div>
@@ -765,6 +799,7 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
         </div>
         <div className="grid grid-cols-2 gap-2">
           <ToggleField label="Image Generator" checked={plan.has_image_generator ?? true} onChange={v => tog("has_image_generator", v)} />
+          <ToggleField label="AI Image Generation" checked={plan.has_ai_image_generation ?? false} onChange={v => tog("has_ai_image_generation", v)} />
           <ToggleField label="Custom Watermark" checked={plan.has_custom_watermark ?? false} onChange={v => tog("has_custom_watermark", v)} />
           <ToggleField label="Overlay Upload" checked={plan.has_overlay_upload ?? false} onChange={v => tog("has_overlay_upload", v)} />
         </div>
@@ -1394,9 +1429,12 @@ function PointsTab() {
   const [config, setConfig] = useState({
     points_price_per_unit: "2",
     points_burn_per_article: "5",
-    points_burn_per_card: "1",
+    card_generation_base_cost: "1",
+    ai_image_cost_per_generation: "2",
+    signup_bonus_credits: "30",
     points_min_purchase: "10",
     points_system_enabled: "true",
+    ai_image_generation_enabled: "true",
   });
   const [loaded, setLoaded] = useState(false);
   const qc = useQueryClient();
@@ -1407,9 +1445,12 @@ function PointsTab() {
       setConfig({
         points_price_per_unit: settings.points_price_per_unit || "2",
         points_burn_per_article: settings.points_burn_per_article || "5",
-        points_burn_per_card: settings.points_burn_per_card || "1",
+        card_generation_base_cost: settings.card_generation_base_cost || settings.points_burn_per_card || "1",
+        ai_image_cost_per_generation: settings.ai_image_cost_per_generation || "2",
+        signup_bonus_credits: settings.signup_bonus_credits || "30",
         points_min_purchase: settings.points_min_purchase || "10",
         points_system_enabled: settings.points_system_enabled || "true",
+        ai_image_generation_enabled: settings.ai_image_generation_enabled || "true",
       });
       setLoaded(true);
     }
@@ -1443,7 +1484,7 @@ function PointsTab() {
         <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-6">
           <h3 className="text-sm font-black text-white uppercase flex items-center gap-2">
             <Coins className="w-4 h-4 text-amber-400" />
-            Pricing
+            Pricing & Bonus
           </h3>
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -1465,6 +1506,16 @@ function PointsTab() {
                 className="bg-black border-white/10 h-12 rounded-xl font-mono"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase text-zinc-500">Signup Bonus Credits (PT)</Label>
+              <Input
+                type="number" min={0}
+                value={config.signup_bonus_credits}
+                onChange={(e) => setConfig({ ...config, signup_bonus_credits: e.target.value })}
+                className="bg-black border-white/10 h-12 rounded-xl font-mono text-emerald-400"
+              />
+              <p className="text-[10px] text-zinc-600">Free points for new users</p>
+            </div>
           </div>
         </div>
 
@@ -1475,29 +1526,67 @@ function PointsTab() {
           </h3>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-zinc-500">Points Burned per News Card</Label>
+              <Label className="text-[10px] font-black uppercase text-zinc-500">Base News Card Cost (PT)</Label>
               <Input
                 type="number" min={0}
-                value={config.points_burn_per_card}
-                onChange={(e) => setConfig({ ...config, points_burn_per_card: e.target.value })}
+                value={config.card_generation_base_cost}
+                onChange={(e) => setConfig({ ...config, card_generation_base_cost: e.target.value })}
                 className="bg-black border-white/10 h-12 rounded-xl font-mono"
               />
-              <p className="text-[10px] text-zinc-600">0 = Free card generation</p>
+              <p className="text-[10px] text-zinc-600">card_generation_base_cost</p>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-[10px] font-black uppercase text-zinc-500">Points Burned per Article</Label>
+              <Label className="text-[10px] font-black uppercase text-zinc-500">AI Image Surcharge (PT)</Label>
+              <Input
+                type="number" min={0}
+                value={config.ai_image_cost_per_generation}
+                onChange={(e) => setConfig({ ...config, ai_image_cost_per_generation: e.target.value })}
+                className="bg-black border-white/10 h-12 rounded-xl font-mono text-blue-400"
+              />
+              <p className="text-[10px] text-zinc-600">ai_image_cost_per_generation (extra cost per AI image layer)</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] font-black uppercase text-zinc-500">Blog Article Publish Cost (PT)</Label>
               <Input
                 type="number" min={0}
                 value={config.points_burn_per_article}
                 onChange={(e) => setConfig({ ...config, points_burn_per_article: e.target.value })}
                 className="bg-black border-white/10 h-12 rounded-xl font-mono"
               />
-              <p className="text-[10px] text-zinc-600">0 = Free article generation</p>
+              <p className="text-[10px] text-zinc-600">points_burn_per_article</p>
             </div>
+          </div>
+        </div>
+
+        <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/5 space-y-6">
+          <h3 className="text-sm font-black text-white uppercase flex items-center gap-2">
+            <Zap className="w-4 h-4 text-blue-400" />
+            Service Controls
+          </h3>
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-white">AI Image Generation</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">Enable or disable AI image generation globally</p>
+              </div>
+              <button
+                onClick={() => setConfig({ ...config, ai_image_generation_enabled: config.ai_image_generation_enabled === "true" ? "false" : "true" })}
+                className={cn(
+                  "w-12 h-6 rounded-full transition-all relative",
+                  config.ai_image_generation_enabled === "true" ? "bg-blue-500" : "bg-zinc-700"
+                )}
+              >
+                <div className={cn(
+                  "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow",
+                  config.ai_image_generation_enabled === "true" ? "left-7" : "left-1"
+                )} />
+              </button>
+            </div>
+
             <div className="p-4 rounded-xl bg-white/5 border border-white/5 flex items-center justify-between">
               <div>
                 <p className="text-sm font-bold text-white">Points System</p>
-                <p className="text-[10px] text-zinc-500 mt-0.5">Enable or disable the entire points economy</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">Enable or disable the points economy</p>
               </div>
               <button
                 onClick={() => setConfig({ ...config, points_system_enabled: config.points_system_enabled === "true" ? "false" : "true" })}
@@ -1518,20 +1607,24 @@ function PointsTab() {
         {/* Preview */}
         <div className="md:col-span-2 p-6 rounded-2xl bg-amber-500/5 border border-amber-500/20">
           <h3 className="text-sm font-black text-amber-400 uppercase mb-3 flex items-center gap-2">
-            <Star className="w-4 h-4" /> Preview
+            <Star className="w-4 h-4" /> Economy Preview
           </h3>
-          <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
             <div>
               <p className="text-2xl font-black font-mono text-white">{parseInt(config.points_min_purchase) * parseFloat(config.points_price_per_unit)} MAD</p>
-              <p className="text-[10px] text-zinc-500 uppercase">Min Purchase ({config.points_min_purchase} PT)</p>
+              <p className="text-[10px] text-zinc-500 uppercase">Min Order ({config.points_min_purchase} PT)</p>
             </div>
             <div>
-              <p className="text-2xl font-black font-mono text-white">{50 * parseFloat(config.points_price_per_unit)} MAD</p>
-              <p className="text-[10px] text-zinc-500 uppercase">50 PT Package</p>
+              <p className="text-2xl font-black font-mono text-white">{Number(config.card_generation_base_cost) + Number(config.ai_image_cost_per_generation)} PT</p>
+              <p className="text-[10px] text-zinc-500 uppercase">Card + 1 AI Image</p>
             </div>
             <div>
-              <p className="text-2xl font-black font-mono text-white">{200 * parseFloat(config.points_price_per_unit)} MAD</p>
-              <p className="text-[10px] text-zinc-500 uppercase">200 PT Package</p>
+              <p className="text-2xl font-black font-mono text-white">{(50 * parseFloat(config.points_price_per_unit)).toFixed(1)} MAD</p>
+              <p className="text-[10px] text-zinc-500 uppercase">50 PT Cost</p>
+            </div>
+            <div>
+              <p className="text-2xl font-black font-mono text-emerald-400">+{config.signup_bonus_credits} PT</p>
+              <p className="text-[10px] text-zinc-500 uppercase">New Account Bonus</p>
             </div>
           </div>
         </div>
@@ -1734,6 +1827,7 @@ const SYS_TABS = [
   { id: "search-ai",   label: "🔍 Search AI",        desc: "Perplexity · Tavily · Gemini" },
   { id: "kieai",       label: "🎨 kie.ai Images",    desc: "FLUX image generation" },
   { id: "custom-ai",   label: "🔧 Custom AI",        desc: "Ollama · LM Studio · any OpenAI-compat" },
+  { id: "nanobanana",  label: "🍌 Nanobanana",      desc: "Free provider settings" },
   { id: "rss",         label: "📡 RSS & Pipeline",   desc: "Content automation" },
   { id: "wordpress",   label: "🌐 WordPress",        desc: "Global credentials" },
   { id: "smtp",        label: "✉️ SMTP",             desc: "Email settings" },
@@ -1741,11 +1835,20 @@ const SYS_TABS = [
   { id: "image-card",  label: "🖼️ News Card",       desc: "Default banner settings" },
 ];
 
+const getSafeHost = (url: string) => {
+  try {
+    if (!url || url.includes("...")) return "veoaifree.com";
+    return new URL(url).hostname;
+  } catch { return "veoaifree.com"; }
+};
+
 function SystemTab() {
   const token = localStorage.getItem("pro_token") ?? "";
   const { toast } = useToast();
   const [activeSubTab, setActiveSubTab] = useState("openrouter");
   const [customSlots, setCustomSlots] = useState<(1 | 2 | 3)[]>([1]);
+  const [nbStatus, setNbStatus] = useState<any>(null);
+  const [nbTesting, setNbTesting] = useState(false);
 
   const { data, isLoading, refetch } = useQuery<{ settings: Record<string, string> }>({
     queryKey: ["admin-system-settings"],
@@ -1772,6 +1875,20 @@ function SystemTab() {
     }
   }, [data?.settings]);
 
+  useEffect(() => {
+    let timer: any;
+    const poll = async () => {
+      try {
+        const r = await fetch("/api/admin/nanobanana/status", { headers: { Authorization: `Bearer ${token}` } });
+        const d = await r.json();
+        setNbStatus(d);
+      } catch {}
+    };
+    poll();
+    timer = setInterval(poll, 15000);
+    return () => clearInterval(timer);
+  }, [token]);
+
   const set = (k: string, v: string) => {
     setForm(f => ({ ...f, [k]: v }));
     setDirty(true);
@@ -1792,6 +1909,25 @@ function SystemTab() {
     } catch {
       toast({ title: "Error", description: "Failed to save", variant: "destructive" });
     } finally { setSaving(false); }
+  };
+
+  const handleClearNbCache = async () => {
+    try {
+      await fetch("/api/admin/nanobanana/cache", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      toast({ title: "Cache cleared" });
+    } catch { toast({ title: "Failed to clear cache", variant: "destructive" }); }
+  };
+
+  const handleTestNanobanana = async () => {
+    setNbTesting(true);
+    try {
+      const r = await fetch("/api/admin/nanobanana/test", { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      const d = await r.json();
+      setNbStatus((s: any) => ({ ...s, lastTestResult: d }));
+      if (d.success) toast({ title: "✅ Connection Success", description: `Latency: ${d.latencyMs}ms` });
+      else toast({ title: "❌ Connection Failed", description: d.error, variant: "destructive" });
+    } catch { toast({ title: "Test error", variant: "destructive" }); }
+    finally { setNbTesting(false); }
   };
 
   // Test reads from DB → must save first
@@ -2039,6 +2175,68 @@ function SystemTab() {
       </div>
     ),
 
+    "nanobanana": (
+      <div style={{ display: "flex", flexDirection: "column" as const, gap: 20 }}>
+        <div style={{ ...box, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ fontSize: 24 }}>🍌</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Nanobanana Connection Status</div>
+                <div style={{ display: "flex", gap: 12, marginBottom: 4 }}>
+                  <div style={{ fontSize: 10, color: "#fb923c", background: "rgba(251,146,60,0.1)", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                    HOST: {getSafeHost(form["nanobanana_page_url"])}
+                  </div>
+                  <div style={{ fontSize: 10, color: "#60a5fa", background: "rgba(96,165,250,0.1)", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                    MODEL: FLUX.1 [schnell]
+                  </div>
+                </div>
+                {nbStatus?.lastTestResult ? (
+                  <div style={{ fontSize: 11, color: "#71717a" }}>
+                    Last tested {Math.round((Date.now() - new Date(nbStatus.lastTestResult.testedAt).getTime()) / 60000)}m ago • Latency: {nbStatus.lastTestResult.latencyMs}ms
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 11, color: "#71717a" }}>Not tested yet</div>
+                )}
+              </div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={handleClearNbCache} style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", color: "#71717a", cursor: "pointer" }}>Clear Cache</button>
+            <button onClick={handleTestNanobanana} disabled={nbTesting} style={{
+              padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+              background: nbStatus?.lastTestResult?.success ? "rgba(34,197,94,0.1)" : "rgba(251,146,60,0.1)",
+              color: nbStatus?.lastTestResult?.success ? "#4ade80" : "#fb923c",
+              border: `1px solid ${nbStatus?.lastTestResult?.success ? "#4ade80" : "#fb923c"}40`
+            }}>
+              {nbTesting ? "Testing..." : nbStatus?.lastTestResult?.success ? "🟢 Connected" : "Test Connection"}
+            </button>
+          </div>
+        </div>
+
+        <div style={box}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+            <F label="Page URL" k="nanobanana_page_url" placeholder="https://veoaifree.com/..." />
+            <F label="AJAX URL" k="nanobanana_ajax_url" placeholder="https://veoaifree.com/wp-admin/admin-ajax.php" />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
+            <F label="Timeout (sec)" k="nanobanana_timeout_s" type="number" placeholder="30" />
+            <F label="Nonce Cache (min)" k="nanobanana_nonce_cache_min" type="number" placeholder="5" />
+            <F label="Max Retry Count" k="nanobanana_retry_count" type="number" placeholder="1" />
+          </div>
+          
+          <div style={{ height: 1, background: "rgba(255,255,255,0.06)", margin: "8px 0 16px" }} />
+          
+          <div style={{ display: "flex", flexDirection: "column" as const, gap: 12 }}>
+            <Tog label="Process one at a time (Queue)" k="nanobanana_queue_enabled" desc="Enable queue to handle concurrent requests safely" />
+            {form["nanobanana_queue_enabled"] !== "true" && (
+              <div style={{ paddingLeft: 16 }}>
+                <F label="Max Concurrent Requests" k="nanobanana_max_concurrent" type="number" placeholder="1" />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ),
+
     "openrouter": (
       <div style={{ display: "flex", flexDirection: "column" as const, gap: 20 }}>
         <div style={box}>
@@ -2227,6 +2425,32 @@ function SystemTab() {
           { v: "draft", l: "Draft" }, { v: "publish", l: "Publish immediately" },
           { v: "pending", l: "Pending review" }, { v: "private", l: "Private" },
         ]} />
+      </div>
+    ),
+
+    "ai-costs": (
+      <div style={{ display: "flex", flexDirection: "column" as const, gap: 20 }}>
+        <div style={box}>
+          <div style={{ 
+            fontSize: 13, 
+            color: "#60a5fa", 
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            gap: 8
+          }}>
+            ℹ️ Points & AI Cost Settings
+          </div>
+          <p style={{ 
+            fontSize: 12, 
+            color: "#71717a", 
+            marginTop: 8,
+            lineHeight: 1.6
+          }}>
+            Points pricing and AI generation costs are managed 
+            in the <strong style={{ color: "#f59e0b" }}>Points</strong> tab.
+          </p>
+        </div>
       </div>
     ),
 

@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { BASE_URL } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { usePlanFeatures } from "@/hooks/usePlanFeatures";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -115,7 +116,7 @@ async function fetchSites(): Promise<{ sites: Site[] }> {
 }
 
 async function createSite(data: typeof EMPTY_FORM) {
-  const r = await fetch(`${BASE_URL}api/sites`, {
+  const r = await fetch(`/api/sites`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${localStorage.getItem("pro_token")}` },
     body: JSON.stringify(data),
@@ -578,7 +579,7 @@ function RssFeedsManager({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs" title="0 = unlimited">Max (0=∞)</Label>
+            <Label className="text-xs">Max (0=unlimited)</Label>
             <Input
               type="number"
               min={0}
@@ -614,11 +615,6 @@ function RssFeedsManager({
 
 const AUTH = () => ({ "Authorization": `Bearer ${localStorage.getItem("pro_token")}` });
 
-async function fetchSubscription() {
-  const r = await fetch(`${BASE_URL}api/subscription`, { headers: AUTH() });
-  if (!r.ok) return null;
-  return r.json();
-}
 
 export default function Sites() {
   const qc = useQueryClient();
@@ -638,18 +634,13 @@ export default function Sites() {
     refetchInterval: 10000,
   });
 
-  const { data: subData } = useQuery({
-    queryKey: ["subscription"],
-    queryFn: fetchSubscription,
-    staleTime: 30000,
-  });
 
+  const { hasFeature, getLimit, isLoading: planLoading } = usePlanFeatures();
   const { toast } = useToast();
 
   // ── Plan limit enforcement (UI layer) ────────────────────────────────────
-  const usage = subData?.usage;
-  const sitesLimit: number = usage?.sites_limit ?? 0;
-  const hasBlogAutomation: boolean = usage?.has_blog_automation ?? false;
+  const sitesLimit: number = getLimit("max_sites") === Infinity ? 999999 : (getLimit("max_sites") ?? 0);
+  const hasBlogAutomation: boolean = hasFeature("has_blog_automation");
   const sites: Site[] = data?.sites ?? [];
   const sitesUsed = sites.length;
   const atLimit = hasBlogAutomation && sitesLimit > 0 && sitesUsed >= sitesLimit;
@@ -813,7 +804,7 @@ export default function Sites() {
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading || planLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
             <div key={i} className="h-48 rounded-lg bg-card animate-pulse" />

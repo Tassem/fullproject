@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   LayoutDashboard, History, Layers,
   KeySquare, LogOut, Bot, CreditCard, PenTool,
-  Globe, FileText, GitBranch, ScrollText, ShieldCheck, Rss, Zap,
+  Globe, FileText, GitBranch, ScrollText, ShieldCheck, Rss, Zap, LifeBuoy, MessageSquare, Lock
 } from "lucide-react";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 
@@ -10,7 +10,7 @@ const PLAN_LABELS: Record<string, { label: string; color: string; bg: string; bo
   free:    { label: "Free",       color: "#94a3b8", bg: "rgba(148,163,184,0.08)", border: "rgba(148,163,184,0.15)" },
   starter: { label: "Starter",    color: "#38bdf8", bg: "rgba(56,189,248,0.08)",  border: "rgba(56,189,248,0.2)" },
   pro:     { label: "Pro",        color: "#a78bfa", bg: "rgba(167,139,250,0.08)", border: "rgba(167,139,250,0.2)" },
-  agency:  { label: "Agency",     color: "#fbbf24", bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.2)" },
+  business: { label: "Business", color: "#fbbf24", bg: "rgba(251,191,36,0.08)",  border: "rgba(251,191,36,0.2)" },
 };
 
 const MAIN_NAV = [
@@ -22,6 +22,8 @@ const MAIN_NAV = [
   { name: "API Keys",        href: "/keys",             icon: KeySquare       },
   { name: "Telegram Bot",    href: "/telegram",         icon: Bot             },
   { name: "My Plan",         href: "/billing",          icon: CreditCard      },
+  { name: "Help Center",     href: "/help",             icon: LifeBuoy        },
+  { name: "Support Tickets", href: "/tickets",          icon: MessageSquare   },
 ];
 
 const BLOG_NAV = [
@@ -148,16 +150,51 @@ export function Sidebar() {
           })}
         </div>
 
-        {/* Blog Automation divider */}
-        <div style={{ margin: "8px 4px" }}>
-          <div style={{ height: 1, background: "rgba(255,255,255,0.04)", marginBottom: 8 }} />
-          <div style={{ fontSize: 9, color: "rgba(251,146,60,0.5)", fontWeight: 800, letterSpacing: "0.15em", textTransform: "uppercase", padding: "2px 12px 6px" }}>
-            Blog Automation
+        {/* Blog Automation section */}
+        {(isAdmin || user?.planDetails?.has_blog_automation) ? (
+          <div style={{ margin: "8px 4px" }}>
+            <div style={{ height: 1, background: "rgba(255,255,255,0.04)", marginBottom: 8 }} />
+            <div style={{ fontSize: 9, color: "rgba(251,146,60,0.5)", fontWeight: 800, letterSpacing: "0.15em", textTransform: "uppercase", padding: "2px 12px 6px" }}>
+              Blog Automation
+            </div>
+            {BLOG_NAV.map(item => (
+              <NavItem key={item.href} {...item} activeColor="#f97316" activeBg="rgba(249,115,22,0.12)" activeBorder="rgba(249,115,22,0.25)" />
+            ))}
           </div>
-          {BLOG_NAV.map(item => (
-            <NavItem key={item.href} {...item} activeColor="#f97316" activeBg="rgba(249,115,22,0.12)" activeBorder="rgba(249,115,22,0.25)" />
-          ))}
-        </div>
+        ) : (
+          <div style={{
+            margin: "12px 8px",
+            padding: "14px",
+            background: "linear-gradient(135deg, rgba(251,146,60,0.1) 0%, rgba(251,191,36,0.05) 100%)",
+            border: "1px border-dashed rgba(251,146,60,0.2)",
+            borderRadius: 12,
+            position: "relative",
+            overflow: "hidden"
+          }}>
+            <div style={{
+              position: "absolute", top: -10, right: -10,
+              opacity: 0.1, color: "#fb923c", transform: "rotate(15deg)"
+            }}>
+              <Globe size={40} />
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#fb923c", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+              <Lock size={12} /> Blog Automation
+            </div>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.5)", lineHeight: 1.4, marginBottom: 10 }}>
+              Add your sites, auto-generate articles, and monitor performance in real-time.
+            </p>
+            <Link href="/billing">
+              <button style={{
+                width: "100%", padding: "6px", borderRadius: 8,
+                background: "#f97316", color: "#fff", border: "none",
+                fontSize: 10, fontWeight: 700, cursor: "pointer",
+                boxShadow: "0 4px 12px rgba(249,115,22,0.2)"
+              }}>
+                Upgrade Plan
+              </button>
+            </Link>
+          </div>
+        )}
 
         {/* Admin link */}
         {isAdmin && (
@@ -193,6 +230,33 @@ export function Sidebar() {
                 </div>
               </div>
             </Link>
+
+            <Link href="/blog-admin/tickets">
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                padding: "9px 12px", borderRadius: 10, marginTop: 4,
+                cursor: "pointer", transition: "all 0.15s",
+                background: location === "/blog-admin/tickets" ? "rgba(124,58,237,0.12)" : "transparent",
+                color: location === "/blog-admin/tickets" ? "#c4b5fd" : "rgba(255,255,255,0.45)",
+                border: `1px solid ${location === "/blog-admin/tickets" ? "rgba(124,58,237,0.2)" : "transparent"}`,
+              }}
+                onMouseEnter={e => { if (location !== "/blog-admin/tickets") { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.8)"; } }}
+                onMouseLeave={e => { if (location !== "/blog-admin/tickets") { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(255,255,255,0.45)"; } }}
+              >
+                <LifeBuoy size={14} />
+                <span style={{ fontSize: 13 }}>Support Tickets</span>
+              </div>
+            </Link>
+          </div>
+        )}
+
+        {/* Low Credits Alert */}
+        {!isAdmin && user?.planDetails?.monthly_credits > 0 && (user?.monthly_credits ?? 0) <= (user?.planDetails?.monthly_credits * 0.1) && (
+          <div style={{ margin: "16px 12px 0", padding: "10px 12px", borderRadius: 10, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", display: "flex", gap: 10, alignItems: "center" }}>
+            <Zap size={14} color="#f87171" />
+            <div style={{ fontSize: 10.5, color: "#fca5a5", fontWeight: 600, lineHeight: 1.3 }}>
+              Monthly credits low. Purchased credits will be used next.
+            </div>
           </div>
         )}
       </nav>
@@ -237,19 +301,21 @@ export function Sidebar() {
             }}>
               {(user?.name ?? "U")[0].toUpperCase()}
             </div>
-            <div style={{ overflow: "hidden" }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {user?.name ?? "User"}
+            <Link href="/profile">
+              <div style={{ cursor: "pointer" }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {user?.name ?? "User"}
+                </div>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                  color: planInfo.color, background: planInfo.bg,
+                  border: `1px solid ${planInfo.border}`,
+                  padding: "1px 8px", borderRadius: 999, display: "inline-block", marginTop: 1,
+                }}>
+                  {planInfo.label}
+                </span>
               </div>
-              <span style={{
-                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
-                color: planInfo.color, background: planInfo.bg,
-                border: `1px solid ${planInfo.border}`,
-                padding: "1px 8px", borderRadius: 999, display: "inline-block", marginTop: 1,
-              }}>
-                {planInfo.label}
-              </span>
-            </div>
+            </Link>
           </div>
 
           <button onClick={handleLogout} style={{

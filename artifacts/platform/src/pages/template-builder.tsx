@@ -6,7 +6,7 @@ import {
   Undo2, Redo2, Save, Upload, Trash2, Lock, Unlock, Eye, EyeOff,
   Copy, ChevronUp, ChevronDown, ZoomIn, ZoomOut, AlignLeft, AlignCenter,
   AlignRight, Layers, Image, Type, Square, Circle, Minus, Grid,
-  Download, FolderOpen,
+  Download, FolderOpen, Sparkles,
 } from "lucide-react";
 
 
@@ -289,11 +289,52 @@ export default function TemplateBuilder() {
   const [downloading, setDownloading] = useState(false);
 
   // ── AI Background state ───────────────────────────────────────────────────
-  const [aiMode, setAiMode]           = useState(false);
+  const [aiMode, setAiMode] = useState<"title" | "image" | "prompt">("image");
   const [aiStyle, setAiStyle]         = useState<"photorealistic" | "illustration" | "abstract">("photorealistic");
   const [aiImageUrl, setAiImageUrl]   = useState<string | null>(null);
   const [aiPromptText, setAiPromptText] = useState("");
+  const [aiCustomPrompt, setAiCustomPrompt] = useState("");
+  const [aiSelectedTextId, setAiSelectedTextId] = useState<string | null>(null);
   const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiAddonPrice, setAiAddonPrice] = useState<string>("39$");
+  const [aiCostPerGen, setAiCostPerGen] = useState(2);
+  const [baseCardCost, setBaseCardCost] = useState(1);
+  const [aiPreviewApplied, setAiPreviewApplied] = useState(false);
+  const [aiServiceStatus, setAiServiceStatus] = useState("operational");
+  const [aiServiceMessage, setAiServiceMessage] = useState("");
+  const [aiRetryableError, setAiRetryableError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings/point-costs")
+      .then(r => r.json())
+      .then(res => {
+        if (res.success && res.data) {
+          const { cardBaseCost, aiImageCost } = res.data;
+          if (cardBaseCost !== undefined) setBaseCardCost(cardBaseCost);
+          if (aiImageCost !== undefined) setAiCostPerGen(aiImageCost);
+        }
+      })
+      .catch(() => {});
+
+    // Fetch service status from public settings
+    fetch("/api/settings/public")
+      .then(r => r.json())
+      .then(data => {
+        if (data.aiServiceStatus) setAiServiceStatus(data.aiServiceStatus);
+        if (data.aiServiceMessage) setAiServiceMessage(data.aiServiceMessage);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/addons")
+      .then(r => r.json())
+      .then(data => {
+        const addon = data.addons?.find((a: any) => a.feature_key === "has_ai_image_generation");
+        if (addon) setAiAddonPrice(`${addon.price}$`);
+      })
+      .catch(() => {});
+  }, []);
 
   const { data: billingStatus } = useQuery({
     queryKey: ["billing", "status"],
@@ -304,44 +345,95 @@ export default function TemplateBuilder() {
       return r.json();
     },
     enabled: !!localStorage.getItem("pro_token"),
+    refetchOnWindowFocus: true,
+    staleTime: 5000,
   });
-  const hasAiFeature = !!(billingStatus?.plan?.has_ai_image_generation);
+  const hasAiFeature = !!(billingStatus?.effective?.has_ai_image_generation);
 
-  const handleGenerateAiBackground = async () => {
-    const titleEl = els.find(e => e.type === "text" && e.content && e.content.length > 5);
-    const titleText = titleEl?.content || tplName || "";
-    if (!titleText.trim()) {
-      toast({ title: "Add a headline first", description: "Type your news headline text before generating an AI background.", variant: "destructive" });
-      return;
+  const handleGenerateAiImage = async () => {
+    let finalTitleText = "";
+    let finalImageUrl = "";
+
+    if (aiMode === "title") {
+      const titleEl = (aiSelectedTextId ? els.find(e => e.id === aiSelectedTextId) : els.find(e => e.type === "text" && e.content && e.content.length > 3));
+      finalTitleText = titleEl?.content || tplName || "";
+      if (!finalTitleText.trim() || finalTitleText.length < 3) {
+        toast({ title: "Validation Error", description: "Title must be at least 3 characters.", variant: "destructive" });
+        return;
+      }
+    } else if (aiMode === "image") {
+      const targetEl = els.find(e => e.id === selId);
+      if (!targetEl || targetEl.type !== "photo" || !targetEl.src) {
+        toast({ title: "Validation Error", description: "Please select a photo layer with an uploaded image first.", variant: "destructive" });
+        return;
+      }
+      finalImageUrl = targetEl.src;
+    } else if (aiMode === "prompt") {
+      if (!aiCustomPrompt.trim() || aiCustomPrompt.length < 5) {
+        toast({ title: "Validation Error", description: "Please enter a custom prompt (min 5 chars).", variant: "destructive" });
+        return;
+      }
     }
+
     setAiGenerating(true);
-    setAiImageUrl(null);
+    setAiPreviewApplied(false);
+    setAiRetryableError(null);
     try {
       const t = localStorage.getItem("pro_token");
-      const resp = await fetch("/api/ai-background/generate-image", {
+      const resp = await fetch("/api/ai-background/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${t}` },
-        body: JSON.stringify({ title: titleText, aspectRatio: canvasSize.ratio, style: aiStyle }),
+        body: JSON.stringify({ 
+          mode: aiMode, 
+          titleText: finalTitleText, 
+          imageUrl: finalImageUrl, 
+          customPrompt: aiCustomPrompt, 
+          aspectRatio: canvasSize.ratio, 
+          style: aiStyle 
+        }),
       });
-      const data = await resp.json() as any;
+      
+      const contentType = resp.headers.get("content-type");
+      let data: any = {};
+      if (contentType && contentType.includes("application/json")) {
+        data = await resp.json();
+      } else {
+        const text = await resp.text();
+        throw new Error(resp.status === 504 ? "Server timeout. Please try again later." : `Server error: ${resp.status}`);
+      }
       if (!resp.ok) {
-        if (resp.status === 403) {
-          toast({ title: "Feature not available", description: "AI Image Generation requires an upgrade. Visit Billing to add this feature.", variant: "destructive" });
+        if (resp.status === 402) {
+           toast({ title: "Insufficient Credits", description: data.message || data.error, variant: "destructive" });
+        } else if (resp.status === 403) {
+          toast({ title: "Feature not available", description: data.message || "AI Image Generation requires an upgrade. Visit Billing.", variant: "destructive" });
         } else {
-          throw new Error(data.error || "Image generation failed");
+          const err = new Error(data.message || data.error || "Image generation failed") as any;
+          err.retryable = data.retryable;
+          throw err;
         }
         return;
       }
-      setAiMode(true);
+      
       setAiImageUrl(data.imageUrl);
-      setAiPromptText(data.prompt || "");
-      upd("bg", { src: data.imageUrl, gradient: undefined });
-      toast({ title: "✨ AI Background Ready", description: "Preview shown on canvas. Download to generate the final card (3 CR)." });
+      setAiPromptText(data.usedPrompt || "");
+      toast({ title: "✨ AI Image Ready", description: `Preview generated successfully. Cost: ${data.creditsDeducted} CR. Click 'Apply to Layer' to use it.` });
     } catch (err: any) {
-      toast({ title: "Generation failed", description: err.message || "Please try again.", variant: "destructive" });
+      if (err.retryable) {
+        setAiRetryableError(err.message);
+      } else {
+        toast({ title: "Generation failed", description: err.message || "Please try again. Credits refunded if deducted.", variant: "destructive" });
+      }
     } finally {
       setAiGenerating(false);
     }
+  };
+
+  const applyAiImage = () => {
+    if (!aiImageUrl) return;
+    const targetId = selId && els.find(e => e.id === selId)?.type === "photo" ? selId : "bg";
+    upd(targetId, { src: aiImageUrl, gradient: undefined });
+    setAiPreviewApplied(true);
+    toast({ title: "Applied", description: "Image applied to layer." });
   };
 
   const canvasRef  = useRef<HTMLDivElement>(null);
@@ -938,12 +1030,23 @@ export default function TemplateBuilder() {
         <div style={{ width: 1, height: 28, background: BD }} />
 
         {/* Download as image */}
-        <button onClick={handleDownloadImage} disabled={downloading} title="Generate card via server (proper Arabic text, saves to history, deducts 1 point)" style={{
-          ...toolBtn, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
-          color: "#6ee7b7", padding: "7px 14px", gap: 6, fontWeight: 700, fontSize: 12,
-        }}>
-          <Download size={13} /> {downloading ? "Generating…" : "Generate Card"}
-        </button>
+        {(() => {
+          // Identify layers that use AI-generated images
+          const aiLayersCount = els.filter(e => e.src && e.src.includes("/api/nanobanana/results/")).length;
+          // Each generation costs: Base Card Cost + (Number of AI images * AI Image Cost)
+          const totalCost = baseCardCost + (aiLayersCount * aiCostPerGen);
+          
+          return (
+            <button onClick={handleDownloadImage} disabled={downloading} 
+              title={`Total Cost: ${totalCost} CR (${baseCardCost} base + ${aiLayersCount} AI images × ${aiCostPerGen} CR)`}
+              style={{
+                ...toolBtn, background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)",
+                color: "#6ee7b7", padding: "7px 14px", gap: 6, fontWeight: 700, fontSize: 12,
+              }}>
+              <Download size={13} /> {downloading ? "Generating…" : `Generate Card (${totalCost} CR)`}
+            </button>
+          );
+        })()}
 
         {/* Save */}
         <button onClick={handleSave} disabled={saving} style={{
@@ -1021,12 +1124,69 @@ export default function TemplateBuilder() {
                   <ElBtn icon="📸" label="Photo Frame" onClick={() => addEl("photo", { w: 240, h: 160 })} />
                 </div>
 
-                {/* ── AI Background section ── */}
-                <SectionTitle>AI Background</SectionTitle>
+                {/* ── AI Image Generation section ── */}
+                <SectionTitle>AI Image Generation</SectionTitle>
                 {hasAiFeature ? (
-                  <div style={{ marginBottom: 14 }}>
+                  <div style={{ marginBottom: 14, background: "rgba(0,0,0,0.15)", borderRadius: 10, padding: 10, border: `1px solid ${BD}` }}>
+                    
+                    {aiServiceStatus !== "operational" && (
+                      <div style={{
+                        marginBottom: 10, padding: "8px 10px", borderRadius: 8,
+                        background: aiServiceStatus === "offline" ? "rgba(239,68,68,0.15)" : "rgba(245,158,11,0.15)",
+                        border: `1px solid ${aiServiceStatus === "offline" ? "rgba(239,68,68,0.4)" : "rgba(245,158,11,0.4)"}`,
+                        color: aiServiceStatus === "offline" ? "#fca5a5" : "#fcd34d",
+                        fontSize: 10, lineHeight: 1.4, fontFamily: "'Cairo', sans-serif"
+                      }}>
+                        <strong style={{ display: "block", marginBottom: 2 }}>
+                          {aiServiceStatus === "offline" ? "🔴 Service Offline" : "🟡 Service Degraded"}
+                        </strong>
+                        {aiServiceMessage}
+                      </div>
+                    )}
+
+                    {/* Tabs */}
+                    <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                      <button onClick={() => setAiMode("image")} style={{ flex: 1, padding: "6px 0", fontSize: 10, fontFamily: "'Cairo', sans-serif", cursor: "pointer", background: aiMode === "image" ? "rgba(99,102,241,0.2)" : "transparent", color: aiMode === "image" ? "#fff" : MT, border: "none", borderRadius: 6 }}>🖼️ Image</button>
+                      <button onClick={() => setAiMode("prompt")} style={{ flex: 1, padding: "6px 0", fontSize: 10, fontFamily: "'Cairo', sans-serif", cursor: "pointer", background: aiMode === "prompt" ? "rgba(99,102,241,0.2)" : "transparent", color: aiMode === "prompt" ? "#fff" : MT, border: "none", borderRadius: 6 }}>✍️ Prompt</button>
+                    </div>
+
+                    {/* Mode Content */}
+                    <div style={{ marginBottom: 10 }}>
+                      {aiMode === "title" && (
+                        <div>
+                          <label style={{ fontSize: 10, color: MT, marginBottom: 4, display: "block" }}>Select Text Element</label>
+                          <select value={aiSelectedTextId || ""} onChange={(e) => setAiSelectedTextId(e.target.value)}
+                            style={{ width: "100%", padding: "6px", fontSize: 11, background: BG, color: TX, border: `1px solid ${BD}`, borderRadius: 6, outline: "none" }}>
+                            <option value="">-- Auto-detect Headline --</option>
+                            {els.filter(e => e.type === "text").map(t => (
+                               <option key={t.id} value={t.id}>{t.content?.slice(0, 25) || "Empty Text"}...</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {aiMode === "image" && (
+                        <div style={{ fontSize: 10, color: MT, textAlign: "center", padding: "8px", background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+                          {selId && els.find(e => e.id === selId)?.type === "photo" && els.find(e => e.id === selId)?.src ? (
+                            <span style={{ color: "#4ade80" }}>✅ Valid image layer selected</span>
+                          ) : (
+                            <span style={{ color: "#f87171" }}>⚠️ Select a photo layer with an image on the canvas first</span>
+                          )}
+                        </div>
+                      )}
+
+                      {aiMode === "prompt" && (
+                        <textarea 
+                          value={aiCustomPrompt} 
+                          onChange={(e) => setAiCustomPrompt(e.target.value)}
+                          placeholder="Type your custom prompt here..."
+                          style={{ width: "100%", height: 60, padding: "6px", fontSize: 11, fontFamily: "'Cairo', sans-serif", background: BG, color: TX, border: `1px solid ${BD}`, borderRadius: 6, outline: "none", resize: "none", boxSizing: "border-box" }}
+                        />
+                      )}
+                    </div>
+
                     {/* Style selector */}
-                    <div style={{ display: "flex", gap: 5, marginBottom: 8 }}>
+                    <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
                       {(["photorealistic", "illustration", "abstract"] as const).map(s => (
                         <button key={s} onClick={() => setAiStyle(s)} style={{
                           flex: 1, padding: "5px 0", borderRadius: 7, cursor: "pointer",
@@ -1039,39 +1199,56 @@ export default function TemplateBuilder() {
                         </button>
                       ))}
                     </div>
+
                     {/* Generate button */}
-                    <button onClick={handleGenerateAiBackground} disabled={aiGenerating}
+                    <button onClick={handleGenerateAiImage} disabled={aiGenerating || aiServiceStatus === "offline"}
                       style={{
-                        width: "100%", padding: "9px", borderRadius: 9, cursor: aiGenerating ? "not-allowed" : "pointer",
-                        background: aiGenerating ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)",
+                        width: "100%", padding: "9px", borderRadius: 9, cursor: (aiGenerating || aiServiceStatus === "offline") ? "not-allowed" : "pointer",
+                        background: (aiGenerating || aiServiceStatus === "offline") ? "rgba(99,102,241,0.3)" : "linear-gradient(135deg,#6366f1,#8b5cf6)",
                         border: "none", color: "#fff", fontSize: 11, fontFamily: "'Cairo', sans-serif",
                         fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                        opacity: aiGenerating ? 0.7 : 1,
+                        opacity: (aiGenerating || aiServiceStatus === "offline") ? 0.7 : 1,
                       }}>
                       {aiGenerating
                         ? <><span style={{ display: "inline-block", animation: "spin 1s linear infinite" }}>⏳</span> Generating…</>
-                        : <><span>✨</span> Generate AI Background</>}
+                        : <><span>✨</span> Generate ({aiCostPerGen} CR)</>}
                     </button>
-                    {/* Reset AI mode */}
-                    {aiMode && aiImageUrl && (
-                      <button onClick={() => { setAiMode(false); setAiImageUrl(null); setAiPromptText(""); upd("bg", { src: undefined }); }}
-                        style={{
-                          width: "100%", marginTop: 5, padding: "5px", borderRadius: 7, cursor: "pointer",
-                          background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
-                          color: "#f87171", fontSize: 10, fontFamily: "'Cairo', sans-serif",
-                          display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+
+                    {/* Retryable Error Banner */}
+                    {aiRetryableError && !aiGenerating && (
+                      <div style={{
+                        marginTop: 10, padding: "8px 10px", borderRadius: 8,
+                        background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)",
+                        textAlign: "center"
+                      }}>
+                        <div style={{ color: "#fca5a5", fontSize: 10, marginBottom: 6, fontFamily: "'Cairo', sans-serif" }}>
+                          ⚠️ {aiRetryableError}
+                        </div>
+                        <button onClick={handleGenerateAiImage} style={{
+                          padding: "5px 12px", borderRadius: 6, cursor: "pointer",
+                          background: "rgba(255,255,255,0.1)", color: "#fff", border: "1px solid rgba(255,255,255,0.2)",
+                          fontSize: 10, fontFamily: "'Cairo', sans-serif", fontWeight: 600
                         }}>
-                        <Trash2 size={10} /> Remove AI Background
-                      </button>
+                          🔄 Try Again
+                        </button>
+                      </div>
                     )}
+
+                    {/* Preview & Apply */}
                     {aiImageUrl && (
-                      <div style={{ marginTop: 7, borderRadius: 8, overflow: "hidden", border: `1px solid ${BD}` }}>
-                        <img src={aiImageUrl} alt="AI Background Preview"
-                          style={{ width: "100%", display: "block", objectFit: "cover", maxHeight: 90 }} />
-                        <p style={{ margin: 0, padding: "4px 6px", fontSize: 9, color: MT,
-                          fontFamily: "'Cairo', sans-serif", background: "rgba(0,0,0,0.5)" }}>
-                          ✓ Applied — costs 3 CR on download
-                        </p>
+                      <div style={{ marginTop: 10, borderRadius: 8, overflow: "hidden", border: `1px solid ${BD}`, background: "rgba(0,0,0,0.3)" }}>
+                        <img src={aiImageUrl} alt="AI Preview" style={{ width: "100%", display: "block", objectFit: "cover", maxHeight: 120 }} />
+                        
+                        {!aiPreviewApplied ? (
+                          <div style={{ display: "flex", gap: 5, padding: 8 }}>
+                             <button onClick={() => { setAiImageUrl(null); setAiPromptText(""); }} style={{ flex: 1, padding: "6px", fontSize: 10, borderRadius: 6, cursor: "pointer", background: "rgba(239,68,68,0.1)", color: "#f87171", border: "1px solid rgba(239,68,68,0.3)" }}>Discard</button>
+                             <button onClick={applyAiImage} style={{ flex: 2, padding: "6px", fontSize: 10, borderRadius: 6, cursor: "pointer", background: "#4ade80", color: "#000", border: "none", fontWeight: "bold" }}>Apply to Layer</button>
+                          </div>
+                        ) : (
+                          <div style={{ padding: "6px", fontSize: 10, textAlign: "center", color: "#4ade80", background: "rgba(74, 222, 128, 0.1)" }}>
+                            ✓ Applied to layer
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1086,7 +1263,7 @@ export default function TemplateBuilder() {
                       AI Image Generation is a paid add-on.
                     </p>
                     <p style={{ margin: "4px 0 0", fontSize: 10, color: "#6366f1", fontFamily: "'Cairo', sans-serif" }}>
-                      39$/mo — available in Billing
+                      {aiAddonPrice}/mo — available in Billing
                     </p>
                   </div>
                 )}
@@ -1503,6 +1680,12 @@ export default function TemplateBuilder() {
                           <Trash2 size={11} /> Remove Image
                         </button>
                       )}
+                      <button onClick={() => { setLeftTab("elements"); setAiMode("prompt"); }}
+                        style={{ ...iconBtn, marginTop: 6, width: "100%", background: "rgba(99,102,241,0.1)",
+                          border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc",
+                          justifyContent: "center", padding: "7px", borderRadius: 8, fontSize: 11, gap: 5 }}>
+                        <Sparkles size={11} /> Open AI Generator
+                      </button>
                     </PR>
                   )}
 
@@ -1681,6 +1864,12 @@ export default function TemplateBuilder() {
                       <Trash2 size={11} /> Remove Image
                     </button>
                   )}
+                  <button onClick={() => { setLeftTab("elements"); setAiMode(sel.type === "photo" ? "image" : "prompt"); }}
+                    style={{ ...iconBtn, marginTop: 6, width: "100%", background: "rgba(99,102,241,0.1)",
+                      border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc",
+                      justifyContent: "center", padding: "7px", borderRadius: 8, fontSize: 11, gap: 5 }}>
+                    <Sparkles size={11} /> Open AI Generator
+                  </button>
                 </PR>
               )}
 

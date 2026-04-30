@@ -2,7 +2,9 @@
 import { eq } from "drizzle-orm";
 import { db, articlesTable, agentPromptsTable, pipelineLogsTable, sitesTable, usersTable, creditTransactionsTable, systemSettingsTable } from "@workspace/db";
 import type { Article } from "@workspace/db";
+import { getBlogArticleCost } from "../lib/costService";
 import { parse } from "node-html-parser";
+import { getEffectiveLimits } from "../lib/planGuard.js";
 import {
   callOpenAICompat,
   callOpenRouter,
@@ -761,16 +763,40 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
   }
 
   // ── Stage 9: IMAGE GENERATION (non-fatal) ────────────────────────────────────
-  const imgGenProvider = settings.image_gen_provider ?? (settings.use_kieai === "true" ? "kieai" : "none");
+  const effective = await getEffectiveLimits(article.user_id);
+  const userHasAiImageAddon = !!effective?.features?.has_ai_image_generation;
+  
+  let imgGenProvider = settings.image_gen_provider ?? (settings.use_kieai === "true" ? "kieai" : "none");
+  
+  // Force nanobanana if user has addon but no provider selected (or if user wants automatic AI image)
+  if (userHasAiImageAddon && imgGenProvider === "none") {
+    imgGenProvider = "nanobanana";
+  }
 
   let generatedImageUrl: string | null = null;
   const imgGenStart = Date.now();
 
+  // Resolve settings prefix and display name
+  let settingsPrefix = "";
+  if (imgGenProvider === "nanobanana") {
+    const slot = settings.image_gen_custom_slot || "1";
+    settingsPrefix = (slot === "1" || slot === "") ? "custom_ai" : `custom_ai_${slot}`;
+  } else if (imgGenProvider.startsWith("custom")) {
+    const slot = (imgGenProvider === "custom" || imgGenProvider === "custom_1") ? "" : `_${imgGenProvider.split("_")[1]}`;
+    settingsPrefix = slot === "" ? "custom_ai" : `custom_ai${slot}`;
+  }
+
+  const providerName = settingsPrefix ? (settings[`${settingsPrefix}_name`] || "") : "";
   const providerDisplayName = imgGenProvider === "kieai" 
     ? "kie.ai" 
     : imgGenProvider === "openai" 
       ? "OpenAI" 
-      : (settings[`${imgGenProvider === "custom" ? "custom_ai" : `custom_ai${imgGenProvider === "custom_1" ? "" : `_${imgGenProvider.split("_")[1]}`}`}_name`] || imgGenProvider);
+      : (providerName || imgGenProvider);
+
+  // Auto-detect if we should use Nanobanana polling logic
+  const providerBaseUrl = settingsPrefix ? (settings[`${settingsPrefix}_base_url`] ?? "") : "";
+  const isNanobanana = (imgGenProvider === "nanobanana" || providerName.toLowerCase().includes("nanobanana"))
+                        && !providerBaseUrl.toLowerCase().includes("/v1/images/generations");
 
   try {
     if (!imagePrompt || imgGenProvider === "none") {
@@ -787,28 +813,25 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       const dur = Date.now() - imgGenStart;
       await logStage(articleId, "image_generation", "success", `kie.ai completed in ${dur}ms`, dur);
 
-    } else if (imgGenProvider === "nanobanana") {
-      // Custom Nanobanana provider
-      const slot = settings.image_gen_custom_slot || "1"; // Values from UI: "", "2", "3"
-      const slotNum = slot === "" ? "1" : slot;
-      const prefix = slotNum === "1" ? "custom_ai" : `custom_ai_${slotNum}`;
+    } else if (isNanobanana) {
+      // Nanobanana provider (uses Polling)
+      const baseUrl = settingsPrefix ? (settings[`${settingsPrefix}_base_url`] ?? "") : "";
+      const apiKey = settingsPrefix ? (settings[`${settingsPrefix}_key`] ?? "") : "";
       
-      const baseUrl = settings[`${prefix}_base_url`] ?? "";
-      const apiKey = settings[`${prefix}_key`] ?? "";
-      
-      if (!baseUrl) throw new Error("Nanobanana: Base URL not configured in selected Custom AI slot");
+      if (!baseUrl) throw new Error(`${providerDisplayName}: Base URL not configured`);
       
       const scrubbedPrompt = (imagePrompt ?? "")
         .replace(/\b(?:drug|smuggle|illegal|cocaine|heroin|cannabis|marijuana|violence|killing|death|blood)\b/gi, "safety-sanitized-scene")
-        .replace(/[^\x00-\x7F]/g, "") // Remove non-ASCII characters (Arabic, etc.)
+        .replace(/[^\x00-\x7F]/g, "") // Remove non-ASCII characters
         .trim();
+        
       const { jobId } = await generateImageNanobanana(baseUrl, apiKey, scrubbedPrompt);
       await updateArticle(articleId, { image_status: "generating" });
       const url = await pollNanobananaTask(baseUrl, apiKey, jobId);
       generatedImageUrl = url;
       await updateArticle(articleId, { generated_image_url: url, image_status: "generated" });
       const dur = Date.now() - imgGenStart;
-      await logStage(articleId, "image_generation", "success", `Nanobanana completed in ${dur}ms`, dur);
+      await logStage(articleId, "image_generation", "success", `${providerDisplayName} completed in ${dur}ms`, dur);
 
     } else {
       // Custom / OpenAI-compatible image generation (DALL-E style)
@@ -819,13 +842,9 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       if (imgGenProvider === "openrouter") {
         baseUrl = "https://openrouter.ai/api/v1";
         apiKey = settings.openrouter_api_key_1 || settings.openrouter_api_key_2 || "";
-      } else if (imgGenProvider.startsWith("custom")) {
-        const slot = imgGenProvider === "custom" || imgGenProvider === "custom_1" 
-          ? "" 
-          : `_${imgGenProvider.split("_")[1]}`;
-        const prefix = slot === "" ? "custom_ai" : `custom_ai${slot}`;
-        baseUrl = settings[`${prefix}_base_url`] ?? "";
-        apiKey = settings[`${prefix}_key`] ?? "";
+      } else if (settingsPrefix) {
+        baseUrl = settings[`${settingsPrefix}_base_url`] ?? "";
+        apiKey = settings[`${settingsPrefix}_key`] ?? "";
       }
 
       if (imgGenProvider.startsWith("custom") && !baseUrl) {
@@ -1094,8 +1113,7 @@ ${cleaned}`;
       // Deduct points per published article (read from system settings)
       const fresh = (await db.select().from(articlesTable).where(eq(articlesTable.id, articleId)))[0] as Article;
       if (fresh?.user_id) {
-        const [settingRow] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "points_burn_per_article")).limit(1);
-        const articleCost = parseInt(settingRow?.value ?? "5");
+        const articleCost = await getBlogArticleCost();
         if (articleCost > 0) {
           const [usr] = await db.select().from(usersTable).where(eq(usersTable.id, fresh.user_id)).limit(1);
           if (usr) {
@@ -1107,13 +1125,16 @@ ${cleaned}`;
             let toDeduct = articleCost;
             if (newMonthly >= toDeduct) { newMonthly -= toDeduct; }
             else { toDeduct -= newMonthly; newMonthly = 0; newPurchased = Math.max(0, newPurchased - toDeduct); }
-            await db.update(usersTable).set({ monthly_credits: newMonthly, purchased_credits: newPurchased }).where(eq(usersTable.id, fresh.user_id));
-            await db.insert(creditTransactionsTable).values({
-              userId: fresh.user_id,
-              type: "spend",
-              amount: -articleCost,
-              description: `Article published to WordPress`,
-              service: "blog_automation",
+            
+            await db.transaction(async (tx) => {
+              await tx.update(usersTable).set({ monthly_credits: newMonthly, purchased_credits: newPurchased }).where(eq(usersTable.id, fresh.user_id));
+              await tx.insert(creditTransactionsTable).values({
+                userId: fresh.user_id,
+                type: "spend",
+                amount: -articleCost,
+                description: `Article published to WordPress`,
+                service: "blog_automation",
+              });
             });
           }
         }

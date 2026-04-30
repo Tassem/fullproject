@@ -54,6 +54,7 @@ const PUBLIC_KEYS = [
   "payment_bank_name", "payment_bank_holder", "payment_bank_iban", "payment_bank_swift",
   // Points
   "points_price_per_unit", "points_min_purchase",
+  "card_generation_base_cost", "ai_image_cost_per_generation", "points_burn_per_article", "signup_bonus_credits",
 ];
 
 // GET /api/public/site-info — no auth needed

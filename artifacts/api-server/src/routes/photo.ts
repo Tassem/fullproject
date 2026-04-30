@@ -23,20 +23,14 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith("image/")) cb(null, true);
-    else cb(new Error("Only images are allowed"));
+    else cb(new Error("Only image files are allowed"));
   },
 });
 
 router.post("/upload", requireAuth, upload.single("photo"), async (req: any, res: any) => {
-  const user = req.user as typeof usersTable.$inferSelect;
-
-  // ── Plan enforcement: has_overlay_upload ─────────────────────────────────
-  const guard = await assertFeature(user.id, "has_overlay_upload");
-  if (!guard.ok) return rejectGuard(res, guard);
-
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   const previewUrl = `/api/photo/file/${req.file.filename}`;
   return res.json({ previewUrl, filename: req.file.filename });

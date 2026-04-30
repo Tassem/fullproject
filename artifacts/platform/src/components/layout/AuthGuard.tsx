@@ -1,31 +1,16 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
+import { useAuth } from "@/hooks/useAuth";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const [, setLocation] = useLocation();
-  const token = localStorage.getItem("pro_token");
-
-  const { data: user, isLoading, isError } = useGetMe({
-    query: {
-      enabled: !!token,
-      queryKey: getGetMeQueryKey(),
-      retry: false
-    }
-  });
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
-    if (!token) {
-      setLocation("/login");
-    } else if (isError) {
-      localStorage.removeItem("pro_token");
+    if (!isLoading && !isAuthenticated) {
       setLocation("/login");
     }
-  }, [token, isError, setLocation]);
-
-  if (!token || isError) {
-    return null; // Will redirect
-  }
+  }, [isLoading, isAuthenticated, setLocation]);
 
   if (isLoading) {
     return (
@@ -36,6 +21,10 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     );
+  }
+
+  if (!isAuthenticated) {
+    return null; // Will redirect via useEffect
   }
 
   return <>{children}</>;

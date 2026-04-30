@@ -4,6 +4,9 @@ import { usersTable, plansTable, generatedImagesTable, articlesTable, sitesTable
 import { eq, count, isNull, and, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { invalidateEffectiveLimitsCache } from "../lib/planGuard";
+import { invalidateSettingsCache } from "../lib/settings";
+import { testNanobananaConnection, clearNanobananaCache } from "../lib/nanobananaClient";
+import { db as workspaceDb } from "@workspace/db"; // Alias if needed, but we already have db
 
 const router = Router();
 
@@ -19,6 +22,7 @@ function formatPlan(p: typeof plansTable.$inferSelect) {
     max_saved_designs: p.max_saved_designs,
     has_blog_automation: p.has_blog_automation,
     has_image_generator: p.has_image_generator,
+    has_ai_image_generation: p.has_ai_image_generation,
     has_telegram_bot: p.has_telegram_bot,
     has_api_access: p.has_api_access,
     has_overlay_upload: p.has_overlay_upload,
@@ -121,6 +125,7 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
 
   // Auto-void any pending plan_upgrade requests when plan is manually changed
   if (plan !== undefined) {
+    invalidateEffectiveLimitsCache(id);
     await db.update(paymentRequestsTable).set({
       status: "cancelled",
       adminNotes: "Voided automatically — plan was updated manually by admin.",
@@ -184,6 +189,7 @@ router.post("/users/:id/change-plan", requireAdmin, async (req, res) => {
   }
 
   const [updated] = await db.update(usersTable).set(setUpdates).where(eq(usersTable.id, id)).returning();
+  invalidateEffectiveLimitsCache(id);
 
   if (grant_credits !== false && planMonthlyCredits > 0) {
     await db.insert(creditTransactionsTable).values({
@@ -226,6 +232,7 @@ router.post("/plans", requireAdmin, async (req, res) => {
     max_saved_designs: body.max_saved_designs ?? 10,
     has_blog_automation: body.has_blog_automation ?? false,
     has_image_generator: body.has_image_generator ?? true,
+    has_ai_image_generation: body.has_ai_image_generation ?? false,
     has_telegram_bot: body.has_telegram_bot ?? false,
     has_api_access: body.has_api_access ?? false,
     has_overlay_upload: body.has_overlay_upload ?? false,
@@ -254,7 +261,7 @@ router.put("/plans/:id", requireAdmin, async (req, res) => {
   const updates: Partial<typeof plansTable.$inferInsert> = { updatedAt: new Date() };
   const fields = [
     "name","description","monthly_credits","max_sites","max_templates","max_saved_designs",
-    "has_blog_automation","has_image_generator","has_telegram_bot","has_api_access",
+    "has_blog_automation","has_image_generator","has_ai_image_generation","has_telegram_bot","has_api_access",
     "has_overlay_upload","has_custom_watermark","has_priority_processing","has_priority_support",
     "rate_limit_daily","rate_limit_hourly","price_monthly","price_yearly","sort_order","is_active","is_free",
   ] as const;
@@ -293,6 +300,7 @@ router.put("/settings", requireAdmin, async (req, res) => {
       await db.insert(systemSettingsTable).values({ key, value: String(value) });
     }
   }
+  invalidateSettingsCache();
   const rows = await db.select().from(systemSettingsTable);
   const settings: Record<string, string> = {};
   for (const row of rows) settings[row.key] = row.value ?? "";
@@ -452,6 +460,7 @@ router.get("/payments", requireAdmin, async (req, res) => {
         userId:        paymentRequestsTable.userId,
         type:          paymentRequestsTable.type,
         planId:        paymentRequestsTable.planId,
+        addonId:       paymentRequestsTable.addonId,
         pointsAmount:  paymentRequestsTable.pointsAmount,
         paymentMethod: paymentRequestsTable.paymentMethod,
         proofDetails:  paymentRequestsTable.proofDetails,
@@ -464,10 +473,15 @@ router.get("/payments", requireAdmin, async (req, res) => {
         userPlan:      usersTable.plan,
         planName:      plansTable.name,
         planSlug:      plansTable.slug,
+        addonName:     planAddonsTable.name,
+        addonSlug:     planAddonsTable.slug,
+        addonPrice:    planAddonsTable.price,
+        addonType:     planAddonsTable.type,
       })
       .from(paymentRequestsTable)
       .leftJoin(usersTable, eq(paymentRequestsTable.userId, usersTable.id))
       .leftJoin(plansTable, eq(paymentRequestsTable.planId, plansTable.id))
+      .leftJoin(planAddonsTable, eq(paymentRequestsTable.addonId as any, planAddonsTable.id))
       .where(status ? eq(paymentRequestsTable.status, status) : undefined)
       .orderBy(desc(paymentRequestsTable.createdAt));
     return res.json({ requests: rows });
@@ -626,6 +640,7 @@ router.post("/payments/:id/approve", requireAdmin, async (req, res) => {
           plan: plan.slug,
           monthly_credits: plan.monthly_credits,
         }).where(eq(usersTable.id, request.userId));
+        invalidateEffectiveLimitsCache(request.userId);
       }
     } else if (request.type === "points_purchase" && request.pointsAmount) {
       const [user] = await db
@@ -703,6 +718,61 @@ router.post("/payments/:id/deny", requireAdmin, async (req, res) => {
     return res.json({ success: true, request: updated });
   } catch (err: unknown) {
     return res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+// ── Nanobanana Management ───────────────────────────────────────────────────
+
+router.get("/nanobanana/status", requireAdmin, async (_req, res) => {
+  try {
+    const settRows = await db.select().from(systemSettingsTable);
+    const sett: Record<string, string> = {};
+    for (const r of settRows) sett[r.key] = r.value ?? "";
+
+    // We can't easily get activeRequests/queueLength from here without exporting them,
+    // but we can return the current config from DB.
+    return res.json({
+      enabled: sett["nanobanana_enabled"] !== "false",
+      config: {
+        pageUrl: sett["nanobanana_page_url"] || "https://veoaifree.com/...",
+        ajaxUrl: sett["nanobanana_ajax_url"] || "https://veoaifree.com/wp-admin/...",
+        timeoutMs: parseInt(sett["nanobanana_timeout_ms"] || "180000", 10),
+        nonceCacheMin: parseInt(sett["nanobanana_nonce_cache_min"] || "30", 10),
+        maxConcurrent: parseInt(sett["nanobanana_max_concurrent"] || "1", 10),
+        queueEnabled: sett["nanobanana_queue_enabled"] !== "false",
+        retryCount: parseInt(sett["nanobanana_retry_count"] || "1", 10),
+      }
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/nanobanana/test", requireAdmin, async (_req, res) => {
+  const result = await testNanobananaConnection();
+  return res.json({
+    ...result,
+    testedAt: new Date().toISOString()
+  });
+});
+
+router.post("/nanobanana/clear-cache", requireAdmin, async (_req, res) => {
+  clearNanobananaCache();
+  return res.json({ success: true });
+});
+
+router.post("/openai/test", requireAdmin, async (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey) return res.status(400).json({ success: false, error: "API Key is required" });
+  try {
+    const r = await fetch("https://api.openai.com/v1/models", {
+      headers: { "Authorization": `Bearer ${apiKey}` }
+    });
+    if (r.ok) return res.json({ success: true });
+    const d = await r.json();
+    return res.status(400).json({ success: false, error: d.error?.message || "Invalid Key" });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

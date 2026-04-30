@@ -23,6 +23,7 @@ interface AdminPlan {
   has_api_access: boolean; has_telegram_bot: boolean;
   has_overlay_upload: boolean; has_custom_watermark: boolean;
   has_blog_automation: boolean; has_image_generator: boolean;
+  has_ai_image_generation: boolean;
   has_priority_support: boolean; has_priority_processing: boolean;
   is_active: boolean; is_free: boolean; sort_order: number;
 }
@@ -49,7 +50,7 @@ const PLAN_STYLE: Record<string, { bg: string; color: string; border: string; la
   free:    { bg: "rgba(148,163,184,0.1)", color: "#94a3b8", border: "rgba(148,163,184,0.2)", label: "Free" },
   starter: { bg: "rgba(96,165,250,0.1)",  color: "#60a5fa", border: "rgba(96,165,250,0.2)",  label: "Starter" },
   pro:     { bg: "rgba(167,139,250,0.1)", color: "#a78bfa", border: "rgba(167,139,250,0.2)", label: "Pro" },
-  agency:  { bg: "rgba(251,191,36,0.1)",  color: "#fbbf24", border: "rgba(251,191,36,0.2)",  label: "Agency" },
+  business: { bg: "rgba(251,191,36,0.1)", color: "#fbbf24", border: "rgba(251,191,36,0.2)", label: "Business" },
 };
 
 function PlanBadge({ plan }: { plan: string }) {
@@ -93,6 +94,13 @@ function StatCard({ label, value, icon, gradient }: {
   );
 }
 
+const getSafeHost = (url: string) => {
+  try {
+    if (!url || url.includes("...")) return "veoaifree.com";
+    return new URL(url).hostname;
+  } catch { return "veoaifree.com"; }
+};
+
 // ─── Main ──────────────────────────────────────────────────────────────────
 export default function Admin() {
   const [token, setToken]             = useState(() => localStorage.getItem("ncg_admin_token") || "");
@@ -133,6 +141,19 @@ export default function Admin() {
   const [settingsSaving, setSettingsSaving]  = useState<string | null>(null);
   const [settingsMsg,    setSettingsMsg]     = useState<{ key: string; type: "ok" | "err"; text: string } | null>(null);
   const [testEmailTo,    setTestEmailTo]     = useState("");
+  const [aiSettings,     setAiSettings]      = useState({ enabled: true, cost: 2, baseCost: 1, blogCost: 5, signupBonus: 30, status: "operational", statusMessage: "" });
+  const [providerSettings, setProviderSettings] = useState({
+    provider: "nanobanana",
+    fallbackEnabled: true,
+    nanobanana: { pageUrl: "", ajaxUrl: "", timeoutS: 180, nonceCacheMin: 30, retryCount: 1, queueEnabled: true, maxConcurrent: 1 },
+    openai: { apiKey: "", model: "dall-e-3", size: "1024x1024" }
+  });
+  const [nbStatus, setNbStatus] = useState<any>(null);
+  const [nbTesting, setNbTesting] = useState(false);
+  const [oaTesting, setOaTesting] = useState(false);
+  const [settingsData, setSettingsData] = useState<Record<string, string> | null>(null);
+
+
 
   // ── Homepage settings state ──
   type HF = {
@@ -249,10 +270,64 @@ export default function Admin() {
         host: s.host || "",
         port: String(s.port || "587"),
         user: s.user || "",
+        pass: "",
         from: s.from || "",
       }));
     }
+
+    const res = await fetch("/api/settings", { headers: h });
+    if (res.ok) {
+      const s = await res.json() as any[];
+      const map = Object.fromEntries(s.map(i => [i.key, i.value]));
+      setSettingsData(map);
+      setAiSettings({
+        enabled: map["ai_image_generation_enabled"] !== "false",
+        cost: parseInt(map["ai_image_cost_per_generation"] || "2", 10),
+        baseCost: parseInt(map["card_generation_base_cost"] || "1", 10),
+        blogCost: parseInt(map["points_burn_per_article"] || "5", 10),
+        signupBonus: parseInt(map["signup_bonus_credits"] || "30", 10),
+        status: map["ai_image_service_status"] || "operational",
+        statusMessage: map["ai_image_service_status_message"] || "",
+      });
+
+      // Fetch Nanobanana status
+      fetch("/api/admin/nanobanana/status", { headers: h })
+        .then(r => r.json())
+        .then(d => setNbStatus(d))
+        .catch(() => {});
+    }
   }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      fetch("/api/admin/nanobanana/status", { headers: authHeaders() })
+        .then(r => r.json())
+        .then(setNbStatus)
+        .catch(console.error);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!settingsData) return;
+    setProviderSettings({
+      provider: settingsData["ai_image_provider"] || "nanobanana",
+      fallbackEnabled: settingsData["ai_image_fallback_enabled"] !== "false",
+      nanobanana: {
+        pageUrl: settingsData["nanobanana_page_url"] || "",
+        ajaxUrl: settingsData["nanobanana_ajax_url"] || "",
+        timeoutS: Math.round(parseInt(settingsData["nanobanana_timeout_ms"] || "180000") / 1000),
+        nonceCacheMin: parseInt(settingsData["nanobanana_nonce_cache_min"] || "30"),
+        retryCount: parseInt(settingsData["nanobanana_retry_count"] || "1"),
+        queueEnabled: settingsData["nanobanana_queue_enabled"] !== "false",
+        maxConcurrent: parseInt(settingsData["nanobanana_max_concurrent"] || "1"),
+      },
+      openai: {
+        apiKey: settingsData["openai_api_key"] || "",
+        model: settingsData["openai_image_model"] || "dall-e-3",
+        size: settingsData["openai_image_size"] || "1024x1024",
+      }
+    });
+  }, [settingsData]);
 
   useEffect(() => {
     if (token && activeTab === "settings") { loadSettings(); loadHomepageSettings(); }
@@ -710,6 +785,38 @@ export default function Admin() {
     finally { setSettingsSaving(null); }
   };
 
+  const handleSaveAISettings = async () => {
+    setSettingsSaving("ai");
+    setSettingsMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          settings: [
+            { key: "ai_image_generation_enabled", value: String(aiSettings.enabled) },
+            { key: "ai_image_cost_per_generation", value: String(aiSettings.cost) },
+            { key: "card_generation_base_cost", value: String(aiSettings.baseCost) },
+            { key: "points_burn_per_article", value: String(aiSettings.blogCost) },
+            { key: "signup_bonus_credits", value: String(aiSettings.signupBonus) },
+            { key: "ai_image_service_status", value: aiSettings.status },
+            { key: "ai_image_service_status_message", value: aiSettings.statusMessage },
+          ],
+        }),
+      });
+      if (res.ok) {
+        setSettingsMsg({ key: "ai", type: "ok", text: "✅ تم حفظ إعدادات النقاط بنجاح" });
+        loadSettings(); // Refresh preview
+      } else {
+        setSettingsMsg({ key: "ai", type: "err", text: "Failed to update settings" });
+      }
+    } catch {
+      setSettingsMsg({ key: "ai", type: "err", text: "Network error" });
+    } finally {
+      setSettingsSaving(null);
+    }
+  };
+
   const handleDeleteGoogle = async () => {
     setSettingsSaving("google-del"); setSettingsMsg(null);
     try {
@@ -759,6 +866,68 @@ export default function Admin() {
     } catch (e: any) { setSettingsMsg({ key: "smtp-test", type: "err", text: e.message }); }
     finally { setSettingsSaving(null); }
   };
+
+  const handleSaveProviderSettings = async () => {
+    setSettingsSaving("provider"); setSettingsMsg(null);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT", headers: authHeaders(),
+        body: JSON.stringify({
+          settings: [
+            { key: "ai_image_provider", value: providerSettings.provider },
+            { key: "ai_image_fallback_enabled", value: String(providerSettings.fallbackEnabled) },
+            { key: "nanobanana_page_url", value: providerSettings.nanobanana.pageUrl },
+            { key: "nanobanana_ajax_url", value: providerSettings.nanobanana.ajaxUrl },
+            { key: "nanobanana_timeout_ms", value: String(providerSettings.nanobanana.timeoutS * 1000) },
+            { key: "nanobanana_nonce_cache_min", value: String(providerSettings.nanobanana.nonceCacheMin) },
+            { key: "nanobanana_retry_count", value: String(providerSettings.nanobanana.retryCount) },
+            { key: "nanobanana_queue_enabled", value: String(providerSettings.nanobanana.queueEnabled) },
+            { key: "nanobanana_max_concurrent", value: String(providerSettings.nanobanana.maxConcurrent) },
+            { key: "openai_api_key", value: providerSettings.openai.apiKey },
+            { key: "openai_image_model", value: providerSettings.openai.model },
+            { key: "openai_image_size", value: providerSettings.openai.size },
+          ],
+        }),
+      });
+      if (res.ok) {
+        setSettingsMsg({ key: "provider", type: "ok", text: "✅ AI Provider settings saved successfully" });
+        loadSettings();
+      } else throw new Error("Failed to save provider settings");
+    } catch (e: any) { setSettingsMsg({ key: "provider", type: "err", text: e.message }); }
+    finally { setSettingsSaving(null); }
+  };
+
+  const handleTestNanobanana = async () => {
+    setNbTesting(true);
+    try {
+      const r = await fetch("/api/admin/nanobanana/test", { method: "POST", headers: authHeaders() });
+      const d = await r.json();
+      setNbStatus((prev: any) => ({ ...prev, lastTestResult: d }));
+    } catch (err) {
+      console.error("Test failed:", err);
+    } finally { setNbTesting(false); }
+  };
+
+  const handleClearNbCache = async () => {
+    const r = await fetch("/api/admin/nanobanana/clear-cache", { method: "POST", headers: authHeaders() });
+    if (r.ok) alert("Cache cleared successfully");
+  };
+
+  const handleTestOpenAI = async () => {
+    setOaTesting(true);
+    try {
+      const r = await fetch("/api/admin/openai/test", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ apiKey: providerSettings.openai.apiKey })
+      });
+      const d = await r.json();
+      if (r.ok) alert("Connected ✅");
+      else alert(`Invalid Key ❌: ${d.error || ""}`);
+    } catch { alert("Connection failed ❌"); }
+    finally { setOaTesting(false); }
+  };
+
 
   // ── NAV GROUPS ─────────────────────────────────────────────────────────────
   const NAV_GROUPS = [
@@ -1160,7 +1329,7 @@ export default function Admin() {
                                 <option value="free">Free</option>
                                 <option value="starter">Starter</option>
                                 <option value="pro">Pro</option>
-                                <option value="agency">Agency</option>
+                                <option value="business">Business</option>
                               </select>
                               {!u.isAdmin
                                 ? <button onClick={() => handleAdminToggle(u.id, true)} style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: AMBER, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }} title="Grant Admin privileges">🛡️</button>
@@ -1226,7 +1395,7 @@ export default function Admin() {
         {activeTab === "plans" && (
           <div>
             <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
-              <button onClick={() => setEditingPlan({ id: -1, name: "", slug: "", description: null, price_monthly: 0, price_yearly: 0, monthly_credits: 30, rate_limit_daily: 10, max_templates: 3, max_saved_designs: 5, max_sites: 0, has_api_access: false, has_telegram_bot: false, has_overlay_upload: false, has_custom_watermark: false, has_blog_automation: false, has_image_generator: true, has_priority_support: false, has_priority_processing: false, is_active: true, is_free: false, sort_order: adminPlans.length })}
+              <button onClick={() => setEditingPlan({ id: -1, name: "", slug: "", description: null, price_monthly: 0, price_yearly: 0, monthly_credits: 30, rate_limit_daily: 10, max_templates: 3, max_saved_designs: 5, max_sites: 0, has_api_access: false, has_telegram_bot: false, has_overlay_upload: false, has_custom_watermark: false, has_blog_automation: false, has_image_generator: true, has_ai_image_generation: false, has_priority_support: false, has_priority_processing: false, is_active: true, is_free: false, sort_order: adminPlans.length })}
                 style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`, color: "#fff", border: "none", padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
                 + Add New Plan
               </button>
@@ -1249,8 +1418,8 @@ export default function Admin() {
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
                     {[
-                      { label: "Credits/mo", value: plan.monthly_credits >= 999 ? "∞" : plan.monthly_credits },
-                      { label: "Daily limit", value: plan.rate_limit_daily >= 999 ? "∞" : plan.rate_limit_daily },
+                      { label: "Credits/mo", value: plan.monthly_credits },
+                      { label: "Daily limit", value: plan.rate_limit_daily },
                       { label: "API", value: plan.has_api_access ? "✓" : "✗" },
                       { label: "Telegram Bot", value: plan.has_telegram_bot ? "✓" : "✗" },
                     ].map(row => (
@@ -1282,7 +1451,7 @@ export default function Admin() {
                       { label: "Monthly Price ($)", field: "price_monthly", type: "number" },
                       { label: "Yearly Price ($)", field: "price_yearly", type: "number" },
                       { label: "Credits/month", field: "monthly_credits", type: "number" },
-                      { label: "Daily limit (999=∞)", field: "rate_limit_daily", type: "number" },
+                      { label: "Daily limit", field: "rate_limit_daily", type: "number" },
                       { label: "Max Templates", field: "max_templates", type: "number" },
                       { label: "Max Saved Designs", field: "max_saved_designs", type: "number" },
                       { label: "Max Sites", field: "max_sites", type: "number" },
@@ -1305,6 +1474,7 @@ export default function Admin() {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
                     {[
                       { label: "Image Generator",    field: "has_image_generator" },
+                      { label: "AI Image Generation", field: "has_ai_image_generation" },
                       { label: "Blog Automation",    field: "has_blog_automation" },
                       { label: "API Access",          field: "has_api_access" },
                       { label: "Telegram Bot",        field: "has_telegram_bot" },
@@ -1899,6 +2069,320 @@ export default function Admin() {
             </div>
 
             {/* ── SMTP / Email ── */}
+            {/* ── AI Image Generation Settings ── */}
+            <div style={cardStyle}>
+              <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 32, height: 32, background: "rgba(99,102,241,0.1)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✨</span>
+                AI Image Generation
+              </h3>
+              <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
+                Control the master switch and credit cost for AI image generation.
+              </p>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "12px 16px", background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, borderRadius: 10 }}>
+                  <input type="checkbox" checked={aiSettings.enabled}
+                    onChange={e => setAiSettings(s => ({ ...s, enabled: e.target.checked }))}
+                    style={{ width: 18, height: 18, accentColor: ACCENT }} />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Enable AI Image Generation</div>
+                    <div style={{ fontSize: 12, color: MUTED }}>Master switch to enable or disable the feature globally.</div>
+                  </div>
+                </label>
+              {/* ── Points System Settings ── */}
+              <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
+                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⚙️</span>
+                  إعدادات نظام النقاط - Points System Settings
+                </h3>
+                <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
+                  تحكم في تكلفة النقاط لكل ميزة ومكافآت المستخدمين الجدد
+                </p>
+
+                {/* Cost Preview Box */}
+                <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 16, marginBottom: 24, border: `1px solid ${BORDER}` }}>
+                  <h4 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: ACCENT2 }}>💡 معاينة التكاليف - Cost Preview</h4>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13, color: TEXT }}>
+                    <div>• بطاقة بدون AI: <strong style={{ color: "#fff" }}>{aiSettings.baseCost}</strong> نقطة</div>
+                    <div>• بطاقة مع صورة AI: <strong style={{ color: "#fff" }}>{aiSettings.baseCost + aiSettings.cost}</strong> نقطة</div>
+                    <div>• نشر مقال: <strong style={{ color: "#fff" }}>{aiSettings.blogCost}</strong> نقطة</div>
+                    <div style={{ color: GREEN }}>• مكافأة تسجيل جديد: <strong style={{ color: "#fff" }}>+{aiSettings.signupBonus}</strong> نقطة 🎁</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                  <div>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>إنشاء بطاقة (أساسي)</label>
+                    <input type="number" value={aiSettings.baseCost} onChange={e => setAiSettings(s => ({ ...s, baseCost: parseInt(e.target.value) || 0 }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>صورة ذكاء اصطناعي</label>
+                    <input type="number" value={aiSettings.cost} onChange={e => setAiSettings(s => ({ ...s, cost: parseInt(e.target.value) || 0 }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>نشر مقال مدونة</label>
+                    <input type="number" value={aiSettings.blogCost} onChange={e => setAiSettings(s => ({ ...s, blogCost: parseInt(e.target.value) || 0 }))} style={inputStyle} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>🎁 مكافأة التسجيل</label>
+                    <input type="number" value={aiSettings.signupBonus} onChange={e => setAiSettings(s => ({ ...s, signupBonus: parseInt(e.target.value) || 0 }))} style={inputStyle} />
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", color: TEXT, fontSize: 14, fontWeight: 600 }}>
+                  <input type="checkbox" checked={aiSettings.enabled} onChange={e => setAiSettings(s => ({ ...s, enabled: e.target.checked }))} />
+                  تفعيل توليد الصور بالذكاء الاصطناعي - AI Image Generation Enabled
+                </label>
+              </div>
+
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>حالة الخدمة - Service Status</label>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <select value={aiSettings.status} onChange={e => setAiSettings(s => ({ ...s, status: e.target.value }))} style={{ ...inputStyle, width: "150px" }}>
+                    <option value="operational">🟢 Operational</option>
+                    <option value="degraded">🟡 Degraded</option>
+                    <option value="offline">🔴 Offline</option>
+                  </select>
+                  <input type="text" value={aiSettings.statusMessage} onChange={e => setAiSettings(s => ({ ...s, statusMessage: e.target.value }))} placeholder="رسالة الحالة (مثلاً: تحت الصيانة)" style={{ ...inputStyle, flex: 1 }} />
+                </div>
+              </div>
+
+              {(aiSettings.baseCost === 0 || aiSettings.cost === 0 || aiSettings.blogCost === 0) && (
+                <div style={{ marginBottom: 20, padding: 12, borderRadius: 8, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", color: AMBER, fontSize: 13 }}>
+                  ⚠️ تحذير: إحدى الميزات مجانية (تكلفة = 0). تأكد أن هذا مقصود.
+                </div>
+              )}
+
+              <button onClick={handleSaveAISettings} disabled={settingsSaving === "ai"} style={{
+                background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`,
+                color: "#fff", border: "none", padding: "12px 28px",
+                borderRadius: 10, fontSize: 14, fontWeight: 700,
+                cursor: settingsSaving === "ai" ? "wait" : "pointer",
+                fontFamily: "'Inter', sans-serif",
+              }}>{settingsSaving === "ai" ? "⏳ Saving..." : "💾 Save AI Settings"}</button>
+
+              {settingsMsg?.key === "ai" && (
+                <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
+                  background: settingsMsg.type === "ok" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
+                  color: settingsMsg.type === "ok" ? GREEN : RED,
+                  border: `1px solid ${settingsMsg.type === "ok" ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+                }}>{settingsMsg.text}</div>
+              )}
+            </div>
+
+            {/* ── AI Image Provider Settings ── */}
+            <div style={cardStyle}>
+              <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 32, height: 32, background: "rgba(34,211,238,0.1)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🚀</span>
+                AI Image Provider Settings
+              </h3>
+              <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
+                Configure the provider and performance settings for the image generation engine.
+              </p>
+
+              {/* Section A: Provider Selection */}
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Image Generation Provider
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+                  {[
+                    { id: "nanobanana", label: "Nanobanana", badge: "Free", badgeColor: GREEN, desc: "Free service - may be unstable" },
+                    { id: "openai", label: "OpenAI DALL-E", badge: "Paid", badgeColor: ACCENT, desc: "Reliable paid service - requires API key" },
+                    { id: "disabled", label: "Disabled", badge: "Off", badgeColor: MUTED, desc: "Disable image generation for all users" },
+                  ].map(p => (
+                    <button key={p.id} onClick={() => setProviderSettings(s => ({ ...s, provider: p.id }))} style={{
+                      padding: "14px", borderRadius: 12, textAlign: "left", cursor: "pointer", border: "1px solid", transition: "all 0.2s",
+                      background: providerSettings.provider === p.id ? "rgba(99,102,241,0.08)" : SURFACE,
+                      borderColor: providerSettings.provider === p.id ? ACCENT : BORDER,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <span style={{ fontSize: 14, fontWeight: 800, color: providerSettings.provider === p.id ? "#fff" : TEXT }}>{p.label}</span>
+                        <span style={{ fontSize: 10, fontWeight: 900, padding: "2px 6px", borderRadius: 6, background: `${p.badgeColor}20`, color: p.badgeColor, border: `1px solid ${p.badgeColor}40` }}>{p.badge}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.4 }}>{p.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Section B: Nanobanana Settings */}
+              {providerSettings.provider === "nanobanana" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "20px", background: "rgba(255,255,255,0.02)", borderRadius: 14, border: `1px solid ${BORDER}`, marginBottom: 24 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ fontSize: 20 }}>🍌</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Nanobanana Status</div>
+                        <div style={{ display: "flex", gap: 12, marginBottom: 4 }}>
+                          <div style={{ fontSize: 10, color: "#fb923c", background: "rgba(251,146,60,0.1)", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                            HOST: {getSafeHost(providerSettings.nanobanana.pageUrl)}
+                          </div>
+                          <div style={{ fontSize: 10, color: "#60a5fa", background: "rgba(96,165,250,0.1)", padding: "2px 6px", borderRadius: 4, fontWeight: 700 }}>
+                            MODEL: FLUX.1 [schnell]
+                          </div>
+                        </div>
+                        {nbStatus?.lastTestResult ? (
+                          <div style={{ fontSize: 11, color: MUTED }}>
+                            Last tested {Math.round((Date.now() - new Date(nbStatus.lastTestResult.testedAt).getTime()) / 60000)}m ago • Latency: {nbStatus.lastTestResult.latencyMs}ms
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 11, color: MUTED }}>Not tested yet</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={handleClearNbCache} style={{ padding: "6px 12px", borderRadius: 8, fontSize: 12, background: SURFACE, border: `1px solid ${BORDER}`, color: MUTED, cursor: "pointer" }}>Clear Cache</button>
+                      <button onClick={handleTestNanobanana} disabled={nbTesting} style={{
+                        padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        background: nbStatus?.lastTestResult?.success ? "rgba(34,197,94,0.1)" : "rgba(99,102,241,0.1)",
+                        color: nbStatus?.lastTestResult?.success ? GREEN : ACCENT,
+                        border: `1px solid ${nbStatus?.lastTestResult?.success ? GREEN : ACCENT}40`
+                      }}>
+                        {nbTesting ? "Testing..." : nbStatus?.lastTestResult?.success ? "🟢 Connected" : nbStatus?.lastTestResult?.success === false ? "🔴 Disconnected" : "Test Connection"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ height: 1, background: BORDER, margin: "4px 0" }} />
+
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 12 }}>Connection URLs</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Page URL</label>
+                        <input type="text" value={providerSettings.nanobanana.pageUrl} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, pageUrl: e.target.value } }))} placeholder="https://veoaifree.com/..." style={inputStyle} />
+                      </div>
+                      <div>
+                        <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>AJAX URL</label>
+                        <input type="text" value={providerSettings.nanobanana.ajaxUrl} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, ajaxUrl: e.target.value } }))} placeholder="https://veoaifree.com/wp-admin/admin-ajax.php" style={inputStyle} />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ height: 1, background: BORDER, margin: "4px 0" }} />
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Request Timeout (sec)</label>
+                      <input type="number" value={providerSettings.nanobanana.timeoutS} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, timeoutS: parseInt(e.target.value) || 30 } }))} style={inputStyle} min={30} max={300} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Nonce Cache (min)</label>
+                      <input type="number" value={providerSettings.nanobanana.nonceCacheMin} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, nonceCacheMin: parseInt(e.target.value) || 5 } }))} style={inputStyle} min={5} max={120} />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Max Retry Count</label>
+                      <input type="number" value={providerSettings.nanobanana.retryCount} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, retryCount: parseInt(e.target.value) || 1 } }))} style={inputStyle} min={1} max={5} />
+                    </div>
+                  </div>
+
+                  <div style={{ height: 1, background: BORDER, margin: "4px 0" }} />
+
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 4 }}>Request Queue</div>
+                    <div style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>Control how concurrent requests are handled</div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "12px", background: "rgba(255,255,255,0.03)", borderRadius: 10, border: `1px solid ${BORDER}` }}>
+                      <input type="checkbox" checked={providerSettings.nanobanana.queueEnabled} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, queueEnabled: e.target.checked } }))} style={{ width: 16, height: 16, accentColor: ACCENT }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>Process one request at a time</div>
+                        <div style={{ fontSize: 11, color: MUTED }}>Recommended for free services to avoid overload</div>
+                      </div>
+                    </label>
+                    {!providerSettings.nanobanana.queueEnabled && (
+                      <div style={{ marginTop: 12 }}>
+                        <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Max Concurrent Requests</label>
+                        <input type="number" value={providerSettings.nanobanana.maxConcurrent} onChange={e => setProviderSettings(s => ({ ...s, nanobanana: { ...s.nanobanana, maxConcurrent: parseInt(e.target.value) || 1 } }))} style={{ ...inputStyle, width: "100px" }} min={1} max={5} />
+                      </div>
+                    )}
+                    {providerSettings.nanobanana.queueEnabled && (
+                      <div style={{ marginTop: 12, padding: "10px", background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, fontSize: 11, color: ACCENT }}>
+                        ℹ️ Requests will be processed one at a time. Maximum wait time: 5 minutes.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Section C: OpenAI Settings */}
+              {providerSettings.provider === "openai" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "20px", background: "rgba(255,255,255,0.02)", borderRadius: 14, border: `1px solid ${BORDER}`, marginBottom: 24 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <div style={{ fontSize: 20 }}>🤖</div>
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>OpenAI API Configuration</div>
+                        <div style={{ fontSize: 11, color: MUTED }}>DALL-E Integration</div>
+                      </div>
+                    </div>
+                    <button onClick={handleTestOpenAI} disabled={oaTesting} style={{
+                      padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      background: "rgba(99,102,241,0.1)", color: ACCENT, border: `1px solid ${ACCENT}40`
+                    }}>{oaTesting ? "Testing..." : "Test Connection"}</button>
+                  </div>
+
+                  <div style={{ height: 1, background: BORDER, margin: "4px 0" }} />
+
+                  <div>
+                    <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>API Key</label>
+                    <input type="password" value={providerSettings.openai.apiKey} onChange={e => setProviderSettings(s => ({ ...s, openai: { ...s.openai, apiKey: e.target.value } }))} placeholder="sk-..." style={inputStyle} />
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                    <div>
+                      <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Model</label>
+                      <select value={providerSettings.openai.model} onChange={e => setProviderSettings(s => ({ ...s, openai: { ...s.openai, model: e.target.value } }))} style={inputStyle}>
+                        <option value="dall-e-3">DALL-E 3 (Recommended)</option>
+                        <option value="dall-e-2">DALL-E 2 (Legacy)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>Default Size</label>
+                      <select value={providerSettings.openai.size} onChange={e => setProviderSettings(s => ({ ...s, openai: { ...s.openai, size: e.target.value } }))} style={inputStyle}>
+                        <option value="1024x1024">1024x1024 (Square)</option>
+                        <option value="1792x1024">1792x1024 (Landscape)</option>
+                        <option value="1024x1792">1024x1792 (Portrait)</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Section D: Fallback Settings */}
+              {providerSettings.provider !== "disabled" && (
+                <div style={{ marginBottom: 24 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer", padding: "16px", background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}`, borderRadius: 12 }}>
+                    <input type="checkbox" checked={providerSettings.fallbackEnabled} onChange={e => setProviderSettings(s => ({ ...s, fallbackEnabled: e.target.checked }))} style={{ width: 18, height: 18, accentColor: ACCENT }} />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Enable Automatic Fallback</div>
+                      <div style={{ fontSize: 12, color: MUTED }}>If primary provider fails, automatically try Nanobanana</div>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              {/* Section E: Save Button */}
+              <button onClick={handleSaveProviderSettings} disabled={settingsSaving === "provider"} style={{
+                width: "100%", background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`,
+                color: "#fff", border: "none", padding: "14px", borderRadius: 12, fontSize: 15, fontWeight: 800,
+                cursor: settingsSaving === "provider" ? "wait" : "pointer", boxShadow: `0 8px 24px ${ACCENT}30`
+              }}>
+                {settingsSaving === "provider" ? "⏳ Saving Configuration..." : "💾 Save Provider Settings"}
+              </button>
+
+              {settingsMsg?.key === "provider" && (
+                <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600,
+                  background: settingsMsg.type === "ok" ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)",
+                  color: settingsMsg.type === "ok" ? GREEN : RED,
+                  border: `1px solid ${settingsMsg.type === "ok" ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`,
+                }}>{settingsMsg.text}</div>
+              )}
+            </div>
+
+
+
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📧</span>
@@ -2307,8 +2791,8 @@ export default function Admin() {
                           <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>{plan.name} — <span style={{ color: MUTED, fontFamily: "monospace" }}>${plan.price_monthly}/mo</span></div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                             {[
-                              `${plan.monthly_credits >= 999 ? "∞" : plan.monthly_credits} credits/mo`,
-                              `${plan.rate_limit_daily >= 999 ? "∞" : plan.rate_limit_daily}/day limit`,
+                              `${plan.monthly_credits} credits/mo`,
+                              `${plan.rate_limit_daily}/day limit`,
                               plan.max_templates > 0 && `${plan.max_templates === -1 ? "All" : plan.max_templates} templates`,
                               plan.has_api_access && "API",
                               plan.has_telegram_bot && "Telegram Bot",
@@ -2350,6 +2834,7 @@ export default function Admin() {
           </div>
 
           </div>
+        </div>
         )}
 
         {/* ══════════ PAYMENTS TAB ══════════ */}

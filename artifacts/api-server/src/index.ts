@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { db } from "@workspace/db";
 import { userAddonsTable } from "@workspace/db";
 import { and, eq, lt, isNotNull } from "drizzle-orm";
+import { ensureSystemAddons, ensureDefaultSettings } from "./lib/seed";
 
 /** Deactivate expired user addons (runs every hour). */
 async function deactivateExpiredAddons() {
@@ -47,6 +48,10 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
+  // Run startup syncs
+  ensureSystemAddons();
+  ensureDefaultSettings();
+  
   // Run expiration cleanup immediately, then every hour
   deactivateExpiredAddons();
   setInterval(deactivateExpiredAddons, 60 * 60 * 1000);

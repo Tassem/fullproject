@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Check, X, Zap, Building2, User, Star, AlertCircle, Newspaper, Rss, RefreshCw } from "lucide-react";
+import { Check, X, Zap, Building2, User, Star, AlertCircle, Newspaper, Rss, RefreshCw, Coins } from "lucide-react";
+import { getUserCredits } from "@/lib/creditUtils";
+
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +21,7 @@ interface Plan {
   max_sites: number;
   has_blog_automation: boolean;
   has_image_generator: boolean;
+  has_ai_image_generation: boolean;
   has_api_access: boolean;
   has_telegram_bot: boolean;
   has_overlay_upload: boolean;
@@ -73,31 +76,18 @@ const PLAN_ACCENT: Record<string, { bar: string; icon: string; badge: string; ri
 
 function displayNum(n: number, suffix = "") {
   if (n <= 0) return "—";
-  if (n >= 999) return "∞";
   return n.toLocaleString() + suffix;
 }
 
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   if (limit <= 0) return null;
-  const unlimited = limit >= 999;
-  if (unlimited) {
-    return (
-      <div className="space-y-1">
-        <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">{label}</span>
-          <span className="font-medium text-green-600">{used} / ∞</span>
-        </div>
-        <div className="h-2 rounded-full bg-green-100"><div className="h-2 rounded-full bg-green-400 w-1/4" /></div>
-      </div>
-    );
-  }
   const pct = Math.min((used / limit) * 100, 100);
   const color = pct >= 90 ? "text-red-600" : pct >= 70 ? "text-amber-600" : "text-foreground";
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-sm">
         <span className="text-muted-foreground">{label}</span>
-        <span className={cn("font-medium", color)}>{used} / {limit}</span>
+        <span className={cn("font-medium", color)}>{used} / {limit.toLocaleString()}</span>
       </div>
       <Progress value={pct} className={cn("h-2", pct >= 90 ? "[&>div]:bg-red-500" : pct >= 70 ? "[&>div]:bg-amber-500" : "")} />
     </div>
@@ -144,13 +134,13 @@ export default function Subscription() {
   }
 
   if (!data) return <div className="text-muted-foreground">Could not load subscription data.</div>;
+  const usage = data.usage;
+  const { currentPlan, plans } = data;
 
-  const { currentPlan, usage, plans } = data;
-  const activePlan = plans.find(p => p.slug === currentPlan);
-  const accent = PLAN_ACCENT[currentPlan] ?? PLAN_ACCENT.free;
+  const { monthly, purchased, total } = getUserCredits(usage);
 
   const creditsUsed = usage.monthly_allocation > 0
-    ? usage.monthly_allocation - usage.monthly_credits
+    ? usage.monthly_allocation - monthly
     : 0;
 
   const resetDate = usage.credits_reset_date
@@ -200,7 +190,8 @@ export default function Subscription() {
             <div className="space-y-1">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Purchased credits</span>
-                <span className="font-medium text-violet-500">{usage.purchased_credits}</span>
+                <span className="font-medium text-violet-500">{purchased}</span>
+
               </div>
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 <RefreshCw className="h-3 w-3" /> Never expires

@@ -50,10 +50,10 @@ interface AuthContextValue {
   refreshUser: () => void;
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem("token"));
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem("pro_token"));
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isError || !token) {
       setIsLoading(false);
       if (isError) {
-        localStorage.removeItem("token");
+        localStorage.removeItem("pro_token");
         setToken(null);
         setUser(null);
       }
@@ -84,13 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [isError, token]);
 
   const login = useCallback((newToken: string, newUser: User) => {
-    localStorage.setItem("token", newToken);
+    localStorage.setItem("pro_token", newToken);
     setToken(newToken);
     setUser(newUser);
   }, []);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("token");
+    localStorage.removeItem("pro_token");
     setToken(null);
     setUser(null);
   }, []);

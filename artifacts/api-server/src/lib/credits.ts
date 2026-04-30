@@ -11,7 +11,8 @@
 
 import { db } from "@workspace/db";
 import { usersTable, plansTable, creditTransactionsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
+import { getEffectiveLimits } from "./planGuard";
 
 export type ServiceType = "image_generator" | "blog_automation";
 
@@ -26,16 +27,16 @@ async function getPlan(planSlug: string) {
 }
 
 /** Lazily reset daily usage counter if the date has changed */
-async function checkAndResetDaily(user: typeof usersTable.$inferSelect) {
+async function checkAndResetDaily(userId: number, currentDate: string | null) {
   const today = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
-  if (user.daily_usage_date !== today) {
+  if (currentDate !== today) {
     await db
       .update(usersTable)
       .set({ daily_usage_count: 0, daily_usage_date: today })
-      .where(eq(usersTable.id, user.id));
+      .where(eq(usersTable.id, userId));
     return 0;
   }
-  return user.daily_usage_count ?? 0;
+  return null; // No reset needed
 }
 
 /** Lazily reset monthly credits if credits_reset_date has passed */
@@ -51,38 +52,34 @@ async function checkAndResetMonthly(
     nextReset.setMonth(nextReset.getMonth() + 1);
 
     const newMonthly = plan.monthly_credits;
-    await db
-      .update(usersTable)
-      .set({
-        monthly_credits: newMonthly,
-        credits_reset_date: nextReset,
-        daily_usage_count: 0,
-        daily_usage_date: now.toISOString().slice(0, 10),
-      })
-      .where(eq(usersTable.id, user.id));
+    await db.transaction(async (tx) => {
+      await tx
+        .update(usersTable)
+        .set({
+          monthly_credits: newMonthly,
+          credits_reset_date: nextReset,
+          daily_usage_count: 0,
+          daily_usage_date: now.toISOString().slice(0, 10),
+        })
+        .where(eq(usersTable.id, user.id));
 
-    await db.insert(creditTransactionsTable).values({
-      userId: user.id,
-      type: "earn",
-      amount: newMonthly,
-      description: `تجديد شهري — باقة ${plan.name}`,
-      service: "system",
+      await tx.insert(creditTransactionsTable).values({
+        userId: user.id,
+        type: "earn",
+        amount: newMonthly,
+        description: `تجديد شهري — باقة ${plan.name}`,
+        service: "system",
+      });
     });
 
-    return { monthly: newMonthly, purchased: user.purchased_credits ?? 0 };
+    return true; // Was reset
   }
 
-  return { monthly: user.monthly_credits ?? 0, purchased: user.purchased_credits ?? 0 };
+  return false;
 }
 
 /**
  * Main deduction function — call before every billable operation.
- *
- * @param userId        The user's DB id
- * @param cost          Credit cost (e.g. 1 for card, 5 for article)
- * @param service       "image_generator" | "blog_automation"
- * @param featureFlag   Which plan boolean to check (e.g. "has_image_generator")
- * @param description   Log description stored in credit_transactions
  */
 export async function deductCredits(
   userId: number,
@@ -100,7 +97,8 @@ export async function deductCredits(
   if (!plan) return { ok: false, error: "Plan not found", code: "plan_not_found" };
 
   // 3. Check feature gate
-  if (!(plan[featureFlag] as boolean)) {
+  const effective = await getEffectiveLimits(userId);
+  if (!effective || !effective.features[featureFlag as string]) {
     return {
       ok: false,
       error: `هذه الخدمة غير متاحة في باقتك الحالية (${plan.name}). يرجى الترقية.`,
@@ -108,11 +106,19 @@ export async function deductCredits(
     };
   }
 
-  // 4. Reset daily counter if needed
-  const currentDailyUsage = await checkAndResetDaily(user);
+  // 4. Lazy resets
+  await checkAndResetDaily(user.id, user.daily_usage_date);
+  const wasMonthlyReset = await checkAndResetMonthly(user, plan);
 
-  // 5. Check daily rate limit
-  if (currentDailyUsage >= plan.rate_limit_daily) {
+  // 5. Reload user if reset happened
+  let freshUser = user;
+  if (wasMonthlyReset) {
+    const [u] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+    if (u) freshUser = u;
+  }
+
+  // 6. Check daily rate limit
+  if ((freshUser.daily_usage_count ?? 0) >= plan.rate_limit_daily) {
     return {
       ok: false,
       error: `وصلت للحد اليومي (${plan.rate_limit_daily} عملية/يوم). يتجدد الحد غداً.`,
@@ -120,59 +126,65 @@ export async function deductCredits(
     };
   }
 
-  // 6. Refresh user after possible daily reset
-  const [freshUser] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const monthly = freshUser.monthly_credits ?? 0;
+  const purchased = freshUser.purchased_credits ?? 0;
 
-  // 7. Lazily reset monthly credits
-  const { monthly, purchased } = await checkAndResetMonthly(freshUser, plan);
-
-  // 8. Check if total balance covers cost
+  // 7. Check total balance
   if (cost > 0 && monthly + purchased < cost) {
     return {
       ok: false,
-      error: `رصيدك غير كافٍ. مطلوب: ${cost} | متاح: ${monthly + purchased} (شهري: ${monthly} + مشترى: ${purchased}).`,
+      error: `رصيدك غير كافٍ. مطلوب: ${cost} | متاح: ${monthly + purchased}.`,
       code: "insufficient_credits",
     };
   }
 
-  // 9. Deduct — monthly first, then purchased
-  let deductFromMonthly = 0;
-  let deductFromPurchased = 0;
+  // 8. Atomic Deduction
+  let deductFromMonthly = Math.min(monthly, cost);
+  let deductFromPurchased = Math.max(0, cost - deductFromMonthly);
 
-  if (cost > 0) {
-    deductFromMonthly = Math.min(monthly, cost);
-    deductFromPurchased = cost - deductFromMonthly;
+  try {
+    await db.transaction(async (tx) => {
+      // Deduct monthly
+      if (deductFromMonthly > 0) {
+        const res = await tx.update(usersTable)
+          .set({ monthly_credits: sql`${usersTable.monthly_credits} - ${deductFromMonthly}` })
+          .where(and(eq(usersTable.id, userId), gte(usersTable.monthly_credits, deductFromMonthly)));
+        if ((res as any).rowCount === 0) throw new Error("Insufficient monthly credits (concurrency)");
+      }
 
-    const updates: Partial<typeof usersTable.$inferInsert> = {
-      daily_usage_count: currentDailyUsage + 1,
-    };
-    if (deductFromMonthly > 0) updates.monthly_credits = monthly - deductFromMonthly;
-    if (deductFromPurchased > 0) updates.purchased_credits = purchased - deductFromPurchased;
+      // Deduct purchased
+      if (deductFromPurchased > 0) {
+        const res = await tx.update(usersTable)
+          .set({ purchased_credits: sql`${usersTable.purchased_credits} - ${deductFromPurchased}` })
+          .where(and(eq(usersTable.id, userId), gte(usersTable.purchased_credits, deductFromPurchased)));
+        if ((res as any).rowCount === 0) throw new Error("Insufficient purchased credits (concurrency)");
+      }
 
-    await db.update(usersTable).set(updates).where(eq(usersTable.id, userId));
+      // Update daily usage
+      await tx.update(usersTable)
+        .set({ daily_usage_count: sql`${usersTable.daily_usage_count} + 1` })
+        .where(eq(usersTable.id, userId));
 
-    await db.insert(creditTransactionsTable).values({
-      userId,
-      type: "spend",
-      amount: -cost,
-      description,
-      service,
+      // Log transaction
+      await tx.insert(creditTransactionsTable).values({
+        userId,
+        type: "spend",
+        amount: -cost,
+        description,
+        service,
+      });
     });
-  } else {
-    // Free operation — still track daily usage
-    await db
-      .update(usersTable)
-      .set({ daily_usage_count: currentDailyUsage + 1 })
-      .where(eq(usersTable.id, userId));
-  }
 
-  return {
-    ok: true,
-    creditsUsed: cost,
-    monthlyRemaining: (monthly - deductFromMonthly),
-    purchasedRemaining: (purchased - deductFromPurchased),
-    total: (monthly - deductFromMonthly) + (purchased - deductFromPurchased),
-  };
+    return {
+      ok: true,
+      creditsUsed: cost,
+      monthlyRemaining: monthly - deductFromMonthly,
+      purchasedRemaining: purchased - deductFromPurchased,
+      total: (monthly + purchased) - cost,
+    };
+  } catch (err: any) {
+    return { ok: false, error: err.message || "Deduction failed", code: "insufficient_credits" };
+  }
 }
 
 /**
@@ -189,17 +201,35 @@ export async function restoreCredits(
   const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
   if (!user) return;
 
-  await db
-    .update(usersTable)
-    .set({ monthly_credits: (user.monthly_credits ?? 0) + cost })
-    .where(eq(usersTable.id, userId));
+  const plan = await getPlan(user.plan);
+  const maxMonthly = plan?.monthly_credits ?? 10;
+  
+  const currentMonthly = user.monthly_credits ?? 0;
+  const canRestoreToMonthly = Math.max(0, maxMonthly - currentMonthly);
+  
+  const restoreToMonthly = Math.min(cost, canRestoreToMonthly);
+  const restoreToPurchased = Math.max(0, cost - restoreToMonthly);
 
-  await db.insert(creditTransactionsTable).values({
-    userId,
-    type: "earn",
-    amount: cost,
-    description: `استرداد تلقائي — ${reason}`,
-    service,
+  await db.transaction(async (tx) => {
+    if (restoreToMonthly > 0) {
+      await tx.update(usersTable)
+        .set({ monthly_credits: sql`${usersTable.monthly_credits} + ${restoreToMonthly}` })
+        .where(eq(usersTable.id, userId));
+    }
+    
+    if (restoreToPurchased > 0) {
+      await tx.update(usersTable)
+        .set({ purchased_credits: sql`${usersTable.purchased_credits} + ${restoreToPurchased}` })
+        .where(eq(usersTable.id, userId));
+    }
+
+    await tx.insert(creditTransactionsTable).values({
+      userId,
+      type: "earn",
+      amount: cost,
+      description: `استرداد تلقائي (${service}) — ${reason}`,
+      service: "system",
+    });
   });
 }
 

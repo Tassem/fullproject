@@ -163,7 +163,7 @@ Password: `Admin123!`
 
 ## 📋 Subscription Plans
 
-| Plan | Price | Cards/Day | Articles/Month |
+| Plan | Price | Daily Cap | Credits/Month |
 |------|-------|-----------|----------------|
 | Free | $0 | 5 | — |
 | Starter | $9.99/mo | 20 | 50 |
