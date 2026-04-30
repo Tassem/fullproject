@@ -2,6 +2,7 @@ import express, { type Express, type Request, type Response, type NextFunction }
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import crypto from "crypto";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -37,13 +38,17 @@ app.use(rateLimit({
   message: { error: "Too many requests. Please try again later." },
 }));
 
-// Request logging
+// Correlation ID + request logging
 app.use((req, res, next) => {
+  const requestId = (req.headers["x-request-id"] as string) || crypto.randomUUID();
+  res.setHeader("x-request-id", requestId);
+  (req as any).requestId = requestId;
+
   const start = Date.now();
   res.on("finish", () => {
     const duration = Date.now() - start;
     const sanitizedUrl = req.url.split("?")[0];
-    logger.info(`${req.method} ${sanitizedUrl} ${res.statusCode} - ${duration}ms`);
+    logger.info(`[${requestId.slice(0, 8)}] ${req.method} ${sanitizedUrl} ${res.statusCode} - ${duration}ms`);
   });
   next();
 });

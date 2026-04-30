@@ -113,6 +113,19 @@ pnpm --filter @workspace/platform run dev       # port 8081
 
 ## ⚙️ Configuration
 
+### Required Environment Variables
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `DATABASE_URL` | PostgreSQL connection string (e.g. `postgresql://user:pass@localhost:5432/mediaflow`) | Yes |
+| `SESSION_SECRET` | JWT signing secret — at least 32 random characters. **Must be set; no fallback.** | Yes |
+| `CORS_ORIGINS` | Comma-separated allowed origins (default: `http://localhost:3000,http://localhost:8000`) | No |
+| `PORT` | API server port (default: `8080`) | No |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID for social login | No |
+| `SMTP_HOST` / `SMTP_USER` / `SMTP_PASS` | Email sending for password resets | No |
+
+### Admin-Managed Settings
+
 All AI provider settings are managed through the **Admin Panel → System** tab:
 - OpenRouter API keys (article writing)
 - OpenAI API key (image generation)
@@ -121,6 +134,31 @@ All AI provider settings are managed through the **Admin Panel → System** tab:
 - Tavily API key (link finding)
 - kie.ai API key (FLUX image generation)
 - WordPress global credentials
+
+---
+
+## 🔒 Security
+
+- **CORS** restricted to allowed origins via `CORS_ORIGINS`
+- **Rate limiting** globally (100 req/15 min) + strict auth limiter (10 req/15 min on login/register)
+- **Helmet.js** security headers enabled
+- **Input validation** via Zod on admin endpoints
+- **SSRF protection** on remote image downloads — blocks private IPs, cloud metadata
+- **File upload scanning** via Sharp re-encoding
+- **Password complexity** enforced (uppercase, lowercase, digit, special char, min 8)
+- **Request correlation IDs** for tracing
+
+---
+
+## 🧪 Testing
+
+```bash
+# Run unit tests
+pnpm --filter @workspace/api-server run test --run
+
+# Run tests in watch mode
+pnpm --filter @workspace/api-server run test
+```
 
 ---
 
