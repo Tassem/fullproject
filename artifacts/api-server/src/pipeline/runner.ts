@@ -26,6 +26,7 @@ import {
   wpUpdateRankMath,
 } from "./wordpress.js";
 import { consumeArticleCredit } from "../middlewares/limits.js";
+import { resolveProviderKey, getUserPlanMode, BYOKKeyMissingError, BYOKKeyInvalidError, type KeySource } from "../lib/providerKeyResolver";
 
 
 type Settings = Record<string, string>;
@@ -55,7 +56,8 @@ type ProviderRole = "main" | "sub" | "writer";
 
 function resolveAiCaller(
   settings: Settings,
-  role: ProviderRole
+  role: ProviderRole,
+  byokOverride?: { provider: string; key: string }
 ): (systemPrompt: string, userMessage: string, temperature?: number) => Promise<string> {
   const provider = settings[`ai_provider_${role}`] ?? "openrouter";
 
@@ -90,14 +92,16 @@ function resolveAiCaller(
     sub: settings.openrouter_model_sub ?? "google/gemini-flash-1.5",
     writer: settings.openrouter_model_writer ?? "openai/gpt-4o",
   };
-  const key = keyMap[role];
+  // Use BYOK key if provided for openrouter, otherwise use platform key
+  const key = (byokOverride?.provider === "openrouter" ? byokOverride.key : keyMap[role]);
   const model = modelMap[role];
   if (!key) throw new Error(`OpenRouter API key not configured for ${role} role`);
   return (sys, user, temp) => callOpenRouter(key, model, sys, user, temp);
 }
 
 function resolveAiAnalysisCaller(
-  settings: Settings
+  settings: Settings,
+  byokOverride?: { provider: string; key: string }
 ): (prompt: string, imageUrl?: string) => Promise<string> {
   const provider = settings.ai_provider_image_analysis ?? "gemini";
 
@@ -115,7 +119,8 @@ function resolveAiAnalysisCaller(
   }
 
   if (provider === "openrouter") {
-    const key = settings.openrouter_api_key_1 ?? settings.openrouter_api_key_2 ?? "";
+    // Use BYOK key if provided for openrouter, otherwise use platform key
+    const key = (byokOverride?.provider === "openrouter" ? byokOverride.key : (settings.openrouter_api_key_1 ?? settings.openrouter_api_key_2 ?? ""));
     const model = settings.openrouter_model_image_analysis ?? "openai/gpt-4o";
     if (!key) throw new Error("OpenRouter API key not configured for image analysis");
     return (prompt, img) => callOpenAIVision("https://openrouter.ai/api/v1", key, model, prompt, img, 0.7, {
@@ -235,15 +240,34 @@ export async function processArticle(
   const kieaiModel = settings.kieai_model ?? "flux-dev";
   const kieaiAspect = settings.kieai_aspect_ratio ?? "16:9";
 
+  // ── BYOK: Resolve provider key based on user's plan mode ──
+  let byokOverride: { provider: string; key: string } | undefined;
+  let providerKeySource: KeySource = "platform";
+  try {
+    const planMode = await getUserPlanMode(article.user_id);
+    if (planMode === "byok") {
+      const platformKey = settings.openrouter_api_key_1 ?? "";
+      const resolved = await resolveProviderKey(article.user_id, "openrouter", platformKey, "byok");
+      byokOverride = { provider: resolved.provider, key: resolved.key };
+      providerKeySource = resolved.source;
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await updateArticle(articleId, { content_status: "failed", error_message: msg });
+    const code = (err instanceof BYOKKeyMissingError || err instanceof BYOKKeyInvalidError) ? err.code : "AI_CONFIG_ERROR";
+    await logStage(articleId, "byok_check", "failed", `${code}: ${msg}`);
+    return;
+  }
+
   // AI callers resolved per role
   let callMain: (sys: string, user: string, temp?: number) => Promise<string>;
   let callSub: (sys: string, user: string, temp?: number) => Promise<string>;
   let callWriter: (sys: string, user: string, temp?: number) => Promise<string>;
 
   try {
-    callMain = resolveAiCaller(settings, "main");
-    callSub = resolveAiCaller(settings, "sub");
-    callWriter = resolveAiCaller(settings, "writer");
+    callMain = resolveAiCaller(settings, "main", byokOverride);
+    callSub = resolveAiCaller(settings, "sub", byokOverride);
+    callWriter = resolveAiCaller(settings, "writer", byokOverride);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await updateArticle(articleId, { content_status: "failed", error_message: msg });
@@ -697,7 +721,7 @@ Return ONLY JSON: { "links": [{ "text": string, "url": string }] }`;
       let providerName = settings.ai_provider_image_analysis ?? "Gemini";
       
       try {
-        const analyzer = resolveAiAnalysisCaller(settings);
+        const analyzer = resolveAiAnalysisCaller(settings, byokOverride);
         result = await analyzer(prompt, imgUrl ?? undefined);
         console.log(`[image_analysis] article=${articleId} raw result: "${result.slice(0, 500)}..."`);
       } catch (err) {

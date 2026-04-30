@@ -85,7 +85,7 @@ export async function getActiveUserAddons(userId: number) {
     );
 }
 
-import { PlanFeatures } from "@workspace/db"; 
+import { PlanFeatures } from "@workspace/db";
 
 export type EffectiveLimits = {
   max_sites: number | null;
@@ -94,6 +94,8 @@ export type EffectiveLimits = {
   rate_limit_daily: number | null;
   /** boolean features: ON via plan OR an active feature addon */
   features: Partial<PlanFeatures>;
+  /** 'platform' = standard plan, 'byok' = user provides own API key */
+  plan_mode: "platform" | "byok";
 };
 
 /**
@@ -154,7 +156,8 @@ export async function getEffectiveLimits(userId: number): Promise<EffectiveLimit
     }
   }
 
-  const result: EffectiveLimits = { max_sites, max_templates, max_saved_designs, rate_limit_daily, features };
+  const plan_mode = (plan?.plan_mode === "byok" ? "byok" : "platform") as "platform" | "byok";
+  const result: EffectiveLimits = { max_sites, max_templates, max_saved_designs, rate_limit_daily, features, plan_mode };
   effectiveCache.set(userId, { data: result, ts: Date.now() });
   return result;
 }

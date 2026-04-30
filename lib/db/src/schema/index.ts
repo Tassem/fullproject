@@ -15,3 +15,4 @@ export * from "./payment_requests";
 export * from "./saved_designs";
 export * from "./support";
 export * from "./password_reset_tokens";
+export * from "./user_provider_keys";

@@ -34,7 +34,9 @@ router.get("/subscription", requireAuth, async (req, res) => {
       rate_limit_daily: plan.rate_limit_daily,
       price_monthly: plan.price_monthly,
       price_yearly: plan.price_yearly,
+      plan_mode: plan.plan_mode ?? "platform",
     } : null,
+    plan_mode: plan?.plan_mode ?? "platform",
     credits: {
       monthly: user.monthly_credits ?? 0,
       purchased: user.purchased_credits ?? 0,

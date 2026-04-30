@@ -33,6 +33,7 @@ import addonsRouter from "./addons";
 import supportRouter from "./support";
 import userRouter from "./user";
 import testCreditsRouter from "./test-credits";
+import userKeysRouter from "./user-keys";
 
 import { requireAuth, requireAdmin } from "../lib/auth";
 import { requireFeature } from "../lib/permissions";
@@ -58,6 +59,7 @@ router.use("/sites", requireAuth, sitesRouter);
 router.use("/settings", settingsRouter);
 router.use("/admin", requireAuth, adminRouter);
 router.use("/user", requireAuth, userRouter);
+router.use("/user", requireAuth, userKeysRouter);
 router.use("/billing", requireAuth, billingRouter);
 router.use("/payments", requireAuth, paymentsUserRouter);
 

@@ -3,13 +3,14 @@ import bcrypt from "bcryptjs";
 import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import { usersTable, plansTable, creditTransactionsTable, passwordResetTokensTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { signToken, signRefreshToken, verifyRefreshToken, requireAuth } from "../lib/auth";
 import { getSignupBonus } from "../lib/costService";
 import { OAuth2Client } from "google-auth-library";
 import { sendPasswordResetEmail, sendPasswordResetConfirmation } from "../lib/email";
 import { getSetting } from "../lib/settings";
 import rateLimit from "express-rate-limit";
+import { userProviderKeysTable } from "@workspace/db";
 
 const router = Router();
 
@@ -52,6 +53,7 @@ function formatUser(user: typeof usersTable.$inferSelect, plan: typeof plansTabl
     purchased_credits: user.purchased_credits ?? 0,
     total_credits: (user.monthly_credits ?? 0) + (user.purchased_credits ?? 0),
 
+    plan_mode: plan?.plan_mode ?? "platform",
     planDetails: plan ? {
       monthly_credits: plan.monthly_credits,
       max_sites: plan.max_sites,
@@ -67,6 +69,7 @@ function formatUser(user: typeof usersTable.$inferSelect, plan: typeof plansTabl
       has_priority_support: plan.has_priority_support,
       rate_limit_daily: plan.rate_limit_daily,
       price_monthly: plan.price_monthly,
+      plan_mode: plan.plan_mode ?? "platform",
     } : null,
     createdAt: user.createdAt,
   };
@@ -392,7 +395,18 @@ router.get("/verify-reset-token/:token", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   const user = (req as any).user as typeof usersTable.$inferSelect;
   const plan = await getPlan(user.plan);
-  return res.json(formatUser(user, plan));
+  // Check if user has an OpenRouter key configured
+  const [keyRecord] = await db
+    .select({ id: userProviderKeysTable.id, isValid: userProviderKeysTable.isValid })
+    .from(userProviderKeysTable)
+    .where(and(eq(userProviderKeysTable.userId, user.id), eq(userProviderKeysTable.provider, "openrouter")))
+    .limit(1);
+  const userData = formatUser(user, plan);
+  return res.json({
+    ...userData,
+    has_openrouter_key: !!keyRecord,
+    openrouter_key_valid: keyRecord?.isValid ?? false,
+  });
 });
 
 router.put("/me", requireAuth, async (req, res) => {

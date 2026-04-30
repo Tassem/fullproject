@@ -44,6 +44,7 @@ const createPlanSchema = z.object({
   sort_order: z.coerce.number().int().optional(),
   is_active: z.boolean().optional(),
   is_free: z.boolean().optional(),
+  plan_mode: z.enum(["platform", "byok"]).optional(),
 });
 
 const router = Router();
@@ -74,6 +75,7 @@ function formatPlan(p: typeof plansTable.$inferSelect) {
     sort_order: p.sort_order,
     is_active: p.is_active,
     is_free: p.is_free,
+    plan_mode: p.plan_mode ?? "platform",
     created_at: p.createdAt,
   };
 }
