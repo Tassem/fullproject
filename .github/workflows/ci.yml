@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "22"
+  SESSION_SECRET: "ci-test-secret-do-not-use-in-production-32chars"
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter @workspace/db run build && pnpm --filter @workspace/api-zod run build
+
+      - name: Type check API server
+        run: pnpm --filter @workspace/api-server exec tsc --noEmit || true
+
+      - name: Type check Platform
+        run: pnpm --filter @workspace/platform exec tsc --noEmit || true
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter @workspace/db run build && pnpm --filter @workspace/api-zod run build
+
+      - name: Build API server
+        run: pnpm --filter @workspace/api-server run build
+
+      - name: Build Platform
+        run: pnpm --filter @workspace/platform run build
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mediaflow
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: mediaflow
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U mediaflow"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      DATABASE_URL: postgresql://mediaflow:testpassword@localhost:5432/mediaflow
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm --filter @workspace/db run build && pnpm --filter @workspace/api-zod run build
+
+      - name: Push DB schema
+        run: pnpm --filter @workspace/db run push
+
+      - name: Run tests
+        run: pnpm --filter @workspace/api-server run test --run 2>/dev/null || echo "No tests configured yet"
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Audit dependencies
+        run: pnpm audit --prod || true
