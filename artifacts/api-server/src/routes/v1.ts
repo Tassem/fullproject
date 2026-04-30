@@ -17,16 +17,43 @@ import path from "path";
 import fs from "fs";
 import https from "https";
 import http from "http";
+import crypto from "crypto";
+import { URL } from "url";
+import dns from "dns/promises";
 
 const router = Router();
 
 const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+const BLOCKED_IP_PATTERNS = [
+  /^127\./, /^10\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./,
+  /^169\.254\./, /^0\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./,
+  /^::1$/, /^fc/, /^fd/, /^fe80/,
+];
+
+async function isPrivateUrl(urlStr: string): Promise<boolean> {
+  try {
+    const parsed = new URL(urlStr);
+    if (!["http:", "https:"].includes(parsed.protocol)) return true;
+    if (parsed.hostname === "localhost") return true;
+    const addresses = await dns.resolve4(parsed.hostname);
+    return addresses.some(addr =>
+      BLOCKED_IP_PATTERNS.some(pattern => pattern.test(addr))
+    );
+  } catch {
+    return true;
+  }
+}
+
 async function downloadRemoteImage(url: string): Promise<string | null> {
+  if (await isPrivateUrl(url)) {
+    console.warn(`[SSRF] Blocked request to private/internal URL`);
+    return null;
+  }
   return new Promise((resolve) => {
     const protocol = url.startsWith("https") ? https : http;
-    const tmpFile = path.join(uploadsDir, `remote-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`);
+    const tmpFile = path.join(uploadsDir, `remote-${Date.now()}-${crypto.randomUUID()}.jpg`);
     const file = fs.createWriteStream(tmpFile);
     protocol.get(url, (res) => {
       res.pipe(file);

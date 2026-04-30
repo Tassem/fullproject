@@ -4,13 +4,22 @@ import { randomUUID } from "crypto";
 import { db } from "@workspace/db";
 import { usersTable, plansTable, creditTransactionsTable, passwordResetTokensTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import { signToken, requireAuth } from "../lib/auth";
+import { signToken, signRefreshToken, verifyRefreshToken, requireAuth } from "../lib/auth";
 import { getSignupBonus } from "../lib/costService";
 import { OAuth2Client } from "google-auth-library";
 import { sendPasswordResetEmail, sendPasswordResetConfirmation } from "../lib/email";
 import { getSetting } from "../lib/settings";
+import rateLimit from "express-rate-limit";
 
 const router = Router();
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please try again later." },
+});
 
 function formatUser(user: typeof usersTable.$inferSelect, plan: typeof plansTable.$inferSelect | null) {
   return {
@@ -61,7 +70,7 @@ async function getPlan(slug: string) {
   return plan || null;
 }
 
-router.post("/register", async (req, res) => {
+router.post("/register", authLimiter, async (req, res) => {
   const { name, email, password, phone } = req.body;
   if (!name || !email || !password) {
     return res.status(400).json({ error: "Name, email, and password are required" });
@@ -113,11 +122,12 @@ router.post("/register", async (req, res) => {
 
   const plan = await getPlan(user.plan);
   const token = signToken({ userId: user.id, isAdmin: user.isAdmin });
+  const refreshToken = signRefreshToken({ userId: user.id });
 
-  return res.status(201).json({ token, user: formatUser(user, plan) });
+  return res.status(201).json({ token, refreshToken, user: formatUser(user, plan) });
 });
 
-router.post("/login", async (req, res) => {
+router.post("/login", authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Email and password required" });
 
@@ -129,8 +139,9 @@ router.post("/login", async (req, res) => {
 
   const plan = await getPlan(user.plan);
   const token = signToken({ userId: user.id, isAdmin: user.isAdmin });
+  const refreshToken = signRefreshToken({ userId: user.id });
 
-  return res.json({ token, user: formatUser(user, plan) });
+  return res.json({ token, refreshToken, user: formatUser(user, plan) });
 });
 
 router.post("/google", async (req, res) => {
@@ -218,14 +229,34 @@ router.post("/google", async (req, res) => {
 
     const plan = await getPlan(user.plan);
     const token = signToken({ userId: user.id, isAdmin: user.isAdmin });
-    return res.json({ token, user: formatUser(user, plan) });
+    const refreshToken = signRefreshToken({ userId: user.id });
+    return res.json({ token, refreshToken, user: formatUser(user, plan) });
   } catch (error) {
     console.error("Google OAuth error:", error);
     res.status(500).json({ error: "Google authentication failed" });
   }
 });
 
-router.post("/forgot-password", async (req, res) => {
+router.post("/refresh", async (req, res) => {
+  try {
+    const { refreshToken: rt } = req.body;
+    if (!rt) return res.status(400).json({ error: "Refresh token is required" });
+
+    const payload = verifyRefreshToken(rt);
+    const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.userId)).limit(1);
+    if (!user) return res.status(401).json({ error: "User not found" });
+
+    const plan = await getPlan(user.plan);
+    const newToken = signToken({ userId: user.id, isAdmin: user.isAdmin });
+    const newRefreshToken = signRefreshToken({ userId: user.id });
+
+    return res.json({ token: newToken, refreshToken: newRefreshToken, user: formatUser(user, plan) });
+  } catch {
+    return res.status(401).json({ error: "Invalid or expired refresh token" });
+  }
+});
+
+router.post("/forgot-password", authLimiter, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -270,7 +301,7 @@ router.post("/forgot-password", async (req, res) => {
   }
 });
 
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", authLimiter, async (req, res) => {
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {

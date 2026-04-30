@@ -39,6 +39,15 @@ function invalidateSmtpCache() {
   smtpCache = null;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 export async function sendPasswordResetEmail(
   toEmail: string,
   userName: string,
@@ -69,7 +78,7 @@ export async function sendPasswordResetEmail(
     <p style="margin:10px 0 0 0;opacity:0.9;">Password Reset Request</p>
   </div>
   <div class="content">
-    <h2 style="color:#1f2937;margin-top:0;">Hello ${userName},</h2>
+    <h2 style="color:#1f2937;margin-top:0;">Hello ${escapeHtml(userName)},</h2>
     <p>We received a request to reset your password. Click the button below to create a new password:</p>
     <div style="text-align:center;margin:30px 0;">
       <a href="${resetUrl}" class="button">Reset Password</a>
@@ -126,7 +135,7 @@ export async function sendPasswordResetConfirmation(
     <h1 style="margin:0;">Password Changed</h1>
   </div>
   <div class="content">
-    <p>Hello ${userName},</p>
+    <p>Hello ${escapeHtml(userName)},</p>
     <p>Your MediaFlow password has been successfully changed.</p>
     <p>If you didn't make this change, please contact our support team immediately.</p>
   </div>
@@ -171,7 +180,7 @@ export async function sendTestEmail(
     <p style="margin:10px 0 0 0;opacity:0.9;">Test Email</p>
   </div>
   <div class="content">
-    <p>Hello ${userName},</p>
+    <p>Hello ${escapeHtml(userName)},</p>
     <p>This is a test email from your MediaFlow admin panel. If you received this, your SMTP settings are configured correctly.</p>
     <p style="color:#6b7280;font-size:13px;margin-top:20px;">Sent at: ${new Date().toISOString()}</p>
   </div>

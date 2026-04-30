@@ -36,8 +36,12 @@ router.post("/upload", requireAuth, upload.single("photo"), async (req: any, res
   return res.json({ previewUrl, filename: req.file.filename });
 });
 
-router.get("/file/:filename", (req: any, res: any) => {
-  const filename = path.basename(req.params.filename);
+router.get("/file/:filename", requireAuth, (req: any, res: any) => {
+  const raw = req.params.filename;
+  if (!raw || raw.includes("..") || raw.includes("\0") || raw.includes("/") || raw.includes("\\")) {
+    return res.status(400).json({ error: "Invalid filename" });
+  }
+  const filename = path.basename(raw);
   const filePath = path.join(uploadsDir, filename);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "File not found" });
   res.sendFile(filePath);

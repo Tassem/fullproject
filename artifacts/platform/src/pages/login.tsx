@@ -38,9 +38,10 @@ export default function Login() {
 
   function onSuccess(data: any) {
     if (authCtx) {
-      authCtx.login(data.token, data.user);
+      authCtx.login(data.token, data.user, data.refreshToken);
     } else {
       localStorage.setItem("pro_token", data.token);
+      if (data.refreshToken) localStorage.setItem("pro_refresh_token", data.refreshToken);
     }
     toast({ title: "Signed in successfully", description: "Welcome back to NewsCard Pro" });
     setLocation("/dashboard");

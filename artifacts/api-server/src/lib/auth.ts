@@ -4,10 +4,30 @@ import { db } from "@workspace/db";
 import { usersTable, plansTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-const JWT_SECRET = process.env.SESSION_SECRET || "dev-secret-change-me";
+function getRequiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(
+      `FATAL: ${name} environment variable is required. ` +
+      "Set it to a random string of at least 32 characters."
+    );
+  }
+  return value;
+}
+
+const JWT_SECRET: string = getRequiredEnv("SESSION_SECRET");
+const REFRESH_SECRET: string = JWT_SECRET + "_refresh";
 
 export function signToken(payload: { userId: number; isAdmin: boolean }) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });
+}
+
+export function signRefreshToken(payload: { userId: number }) {
+  return jwt.sign(payload, REFRESH_SECRET, { expiresIn: "30d" });
+}
+
+export function verifyRefreshToken(token: string): { userId: number } {
+  return jwt.verify(token, REFRESH_SECRET) as { userId: number };
 }
 
 export function verifyToken(token: string): { userId: number; isAdmin: boolean } {
