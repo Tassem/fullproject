@@ -208,7 +208,7 @@ router.post("/generate-card", requireApiKey, async (req, res) => {
     if (tmpPhotoPath) fs.unlink(tmpPhotoPath, () => {});
   }
 
-  const outFilename = `card-${Date.now()}-${Math.random().toString(36).slice(2)}.png`;
+  const outFilename = `card-${Date.now()}-${crypto.randomUUID()}.png`;
   fs.writeFileSync(path.join(uploadsDir, outFilename), pngBuffer);
   const imageUrl = `/api/photo/file/${outFilename}`;
 

@@ -170,6 +170,9 @@ importers:
       winston:
         specifier: ^3.19.0
         version: 3.19.0
+      zod:
+        specifier: ^4.4.1
+        version: 4.4.1
     devDependencies:
       '@types/bcryptjs':
         specifier: ^3.0.0
@@ -637,7 +640,7 @@ importers:
     dependencies:
       openai:
         specifier: ^6.27.0
-        version: 6.34.0(zod@4.3.6)
+        version: 6.34.0(zod@4.4.1)
       p-limit:
         specifier: ^7.3.0
         version: 7.3.0
@@ -5211,6 +5214,9 @@ packages:
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
+  zod@4.4.1:
+    resolution: {integrity: sha512-a6ENMBBGZBsnlSebQ/eKCguSBeGKSf4O7BPnqVPmYGtpBYI7VSqoVqw+QcB7kPRjbqPwhYTpFbVj/RqNz/CT0Q==}
+
 snapshots:
 
   '@babel/code-frame@7.29.0':
@@ -8801,9 +8807,9 @@ snapshots:
     dependencies:
       fn.name: 1.1.0
 
-  openai@6.34.0(zod@4.3.6):
+  openai@6.34.0(zod@4.4.1):
     optionalDependencies:
-      zod: 4.3.6
+      zod: 4.4.1
 
   orval@8.5.3(prettier@3.8.1)(typescript@5.9.3):
     dependencies:
@@ -9890,3 +9896,5 @@ snapshots:
   zod@3.25.76: {}
 
   zod@4.3.6: {}
+
+  zod@4.4.1: {}

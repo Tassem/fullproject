@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "@workspace/db";
 import { systemSettingsTable, plansTable } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
+import { requireAuth } from "../lib/auth";
 
 const router = Router();
 
@@ -49,12 +50,15 @@ const PUBLIC_KEYS = [
   "channel_whatsapp_number", "channel_whatsapp_enabled",
   "channel_telegram_url", "channel_telegram_enabled",
   "channel_email", "channel_email_enabled",
-  // Payment Info
-  "payment_paypal_email", "payment_paypal_link",
-  "payment_bank_name", "payment_bank_holder", "payment_bank_iban", "payment_bank_swift",
-  // Points
+  // Points (public pricing info only)
   "points_price_per_unit", "points_min_purchase",
   "card_generation_base_cost", "ai_image_cost_per_generation", "points_burn_per_article", "signup_bonus_credits",
+];
+
+// Payment details are sensitive — only expose to authenticated users
+const PAYMENT_KEYS = [
+  "payment_paypal_email", "payment_paypal_link",
+  "payment_bank_name", "payment_bank_holder", "payment_bank_iban", "payment_bank_swift",
 ];
 
 // GET /api/public/site-info — no auth needed
@@ -66,6 +70,14 @@ router.get("/site-info", async (_req, res) => {
   const plans = await db.select().from(plansTable).where(eq(plansTable.is_active, true));
 
   return res.json({ settings, plans });
+});
+
+// GET /api/public/payment-info — requires auth (sensitive financial details)
+router.get("/payment-info", requireAuth, async (_req, res) => {
+  const rows = await db.select().from(systemSettingsTable).where(inArray(systemSettingsTable.key, PAYMENT_KEYS));
+  const payment: Record<string, string> = {};
+  for (const row of rows) payment[row.key] = row.value || "";
+  return res.json({ payment });
 });
 
 export default router;
