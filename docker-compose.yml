@@ -26,6 +26,7 @@ services:
       PORT: 8080
       DATABASE_URL: postgresql://${PGUSER:-mediaflow}:${PGPASSWORD:?Set PGPASSWORD in .env}@db:5432/${PGDATABASE:-mediaflow}
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      BYOK_ENCRYPTION_KEY: ${BYOK_ENCRYPTION_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
