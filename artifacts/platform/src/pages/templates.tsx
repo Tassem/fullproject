@@ -298,6 +298,61 @@ const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
 
 const CATEGORIES = ["All", "News", "Breaking", "Modern", "Sports", "Premium", "Featured", "Editorial", "Quote", "Social"];
 
+const useAuthenticatedImage = (url: string) => {
+  const [src, setSrc] = useState<string>("");
+  useEffect(() => {
+    if (!url) return;
+    if (!url.startsWith("/api/photo")) {
+      setSrc(url);
+      return;
+    }
+    const token = localStorage.getItem("pro_token");
+    let isMounted = true;
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.ok ? res.blob() : Promise.reject())
+    .then(blob => {
+      if (isMounted) setSrc(URL.createObjectURL(blob));
+    })
+    .catch(() => {
+      if (isMounted) setSrc("");
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, [url]);
+  return src;
+};
+
+function MiniBuilderElement({ el, scale, s }: { el: CE; scale: number; s: React.CSSProperties }) {
+  const authSrc = useAuthenticatedImage(el.src || "");
+
+  if (el.type === "bg") return (
+    <div key={el.id} style={{
+      ...s, backgroundColor: el.fill || "#000",
+      backgroundImage: authSrc ? `url(${authSrc})` : (el.gradient ?? undefined),
+      backgroundSize: "cover", backgroundPosition: "center",
+    }} />
+  );
+
+  if (el.type === "logo") return (
+    <div key={el.id} style={{
+      ...s, background: "rgba(255,255,255,0.08)", borderRadius: 4 * scale,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      padding: 4 * scale,
+    }}>
+      {authSrc ? (
+        <img src={authSrc} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+      ) : (
+        <span style={{ fontSize: 9 * scale, color: "rgba(255,255,255,0.4)", fontFamily: "Cairo" }}>LOGO</span>
+      )}
+    </div>
+  );
+
+  return null;
+}
+
 // ── Mini Builder Preview (renders CE[] canvas) ─────────────────────────────
 type CE = { id: string; type: string; x: number; y: number; w: number; h: number;
   zIndex?: number; hidden?: boolean; fill?: string; gradient?: string; src?: string;
@@ -324,13 +379,9 @@ function MiniBuilderPreview({ elements, scale = 1 }: { elements: CE[]; scale?: n
           opacity: el.opacity ?? 1, zIndex: el.zIndex ?? 0,
           boxSizing: "border-box",
         };
-        if (el.type === "bg") return (
-          <div key={el.id} style={{
-            ...s, backgroundColor: el.fill || "#000",
-            backgroundImage: el.src ? `url(${el.src})` : (el.gradient ?? undefined),
-            backgroundSize: "cover", backgroundPosition: "center",
-          }} />
-        );
+        if (el.type === "bg" || el.type === "logo") {
+          return <MiniBuilderElement key={el.id} el={el} scale={scale} s={s} />;
+        }
         if (el.type === "photo") return (
           <div key={el.id} style={{
             ...s, border: `${scale}px dashed rgba(255,255,255,0.15)`,
@@ -376,14 +427,6 @@ function MiniBuilderPreview({ elements, scale = 1 }: { elements: CE[]; scale?: n
             ...s, borderRadius: "50%", background: el.fill || "#6366f1",
             border: el.borderWidth ? `${el.borderWidth * scale}px solid ${el.borderColor ?? "#fff"}` : "none",
           }} />
-        );
-        if (el.type === "logo") return (
-          <div key={el.id} style={{
-            ...s, background: "rgba(255,255,255,0.12)", borderRadius: 4 * scale,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <span style={{ fontSize: 9 * scale, color: "rgba(255,255,255,0.4)", fontFamily: "Cairo" }}>LOGO</span>
-          </div>
         );
         if (el.type === "social") return (
           <div key={el.id} style={{

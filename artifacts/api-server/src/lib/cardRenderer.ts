@@ -83,6 +83,26 @@ const TEMPLATES: Record<string, TemplateConfig> = {
   "overlay-only":  { bannerColor: "transparent", bannerGradient: "none", textColor: "#ffffff", labelColor: "rgba(255,255,255,0.85)", photoHeight: 100 },
 };
 
+function createAngledGradient(
+  ctx: any,
+  x: number, y: number,
+  width: number, height: number,
+  angleDeg: number
+) {
+  // Convert CSS angle (0 deg is top, clockwise) to Canvas angle (0 rad is right, clockwise)
+  // CSS: 0=top, 90=right, 180=bottom, 270=left
+  // Math: -90=top, 0=right, 90=bottom, 180=left
+  const angle = ((angleDeg - 90) * Math.PI) / 180;
+  const cx = x + width / 2;
+  const cy = y + height / 2;
+  const len = Math.sqrt(width * width + height * height) / 2;
+  const x1 = cx - Math.cos(angle) * len;
+  const y1 = cy - Math.sin(angle) * len;
+  const x2 = cx + Math.cos(angle) * len;
+  const y2 = cy + Math.sin(angle) * len;
+  return ctx.createLinearGradient(x1, y1, x2, y2);
+}
+
 // ── Export (output) dimensions ────────────────────────────────────────────────
 const EXPORT_DIMS: Record<string, { w: number; h: number }> = {
   "1:1":  { w: 1080, h: 1080 },
@@ -267,8 +287,11 @@ export async function renderFromCanvasLayout(
             ctx.restore();
           } catch { /* skip if overlay not found */ }
         } else if (el.gradient) {
-          // Parse simple linear gradient
-          const grad = ctx.createLinearGradient(ex, ey, ex, ey + eh);
+          // Parse angle and stops from CSS string: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%)
+          const angleMatch = el.gradient.match(/(\d+)deg/i);
+          const angle = angleMatch ? parseInt(angleMatch[1]) : 180;
+          const grad = createAngledGradient(ctx, ex, ey, ew, eh, angle);
+          
           const stops = el.gradient.match(/(rgba?\([^)]+\)|#[0-9a-f]+)\s+(\d+)%/gi) || [];
           if (stops.length >= 2) {
             for (const stop of stops) {
@@ -296,7 +319,10 @@ export async function renderFromCanvasLayout(
 
         let fillStyle: string | ReturnType<typeof ctx.createLinearGradient> = el.fill || "rgba(0,0,0,0.5)";
         if (el.gradient) {
-          const g = ctx.createLinearGradient(ex, ey, ex, ey + eh);
+          const angleMatch = el.gradient.match(/(\d+)deg/i);
+          const angle = angleMatch ? parseInt(angleMatch[1]) : 180;
+          const g = createAngledGradient(ctx, ex, ey, ew, eh, angle);
+
           const stops = el.gradient.match(/(rgba?\([^)]+\)|#[0-9a-f]+)\s+(\d+)%/gi) || [];
           if (stops.length >= 2) {
             for (const s of stops) {
