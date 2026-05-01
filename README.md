@@ -170,6 +170,30 @@ See [PROJECT_REPORT.md](./PROJECT_REPORT.md) for full schema documentation.
 
 ---
 
+---
+
+## 🔑 BYOK Plans Setup
+
+To enable Bring Your Own Key (BYOK) plans:
+
+1. **Set encryption key**:
+   - Set environment variable `BYOK_ENCRYPTION_KEY` (32-byte hex string).
+   - Generate with: `openssl rand -hex 32`
+   - This key is used to encrypt user API keys at rest. **If lost, user keys cannot be decrypted.**
+
+2. **Create a BYOK plan from admin dashboard**:
+   - Go to Admin → Plans
+   - Create new plan
+   - Set **Plan Mode** = "Bring Your Own Key"
+   - Set monthly credits (users on BYOK plans still consume credits for platform services like image generation fallbacks or premium tools).
+
+3. **User Flow**:
+   - Users on BYOK plans must add their **OpenRouter API key** in the Billing page.
+   - AI features will use their personal OpenRouter account instead of the platform key.
+   - Full keys are never exposed in API responses or logs.
+
+---
+
 ## 📡 AI Blog Pipeline
 
 ```

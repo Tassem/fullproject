@@ -126,4 +126,19 @@ Following two rounds of fixes (PR #2 and PR #3), **all Critical and High severit
 
 ---
 
+---
+
+## BYOK Feature Security Model (Phase 4 Integration)
+
+The Bring Your Own Key (BYOK) feature allows users to provide their own OpenRouter API keys for AI processing.
+
+### Security Architecture:
+- **Encryption at Rest**: User keys are encrypted with AES-256-GCM using a unique initialization vector (IV) and authentication tag for every record.
+- **Zero Exposure**: Full API keys are never returned in any response (hint only) and never written to application logs.
+- **Strict Isolation**: Cross-user access is blocked; admins can only view key status/validity, never the key itself.
+- **No-Fallback Guarantee**: Users on BYOK plans are strictly blocked from using the platform's shared API key, preventing unauthorized billing.
+- **Rate Limiting**: Dedicated rate limits protect key management endpoints from brute-force validation attempts.
+
+---
+
 *This summary was prepared as part of a comprehensive security audit of the MediaFlow platform. The full technical audit report with code-level findings is available upon request.*

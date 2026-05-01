@@ -3,11 +3,33 @@ import path from 'path';
 
 const LOGS_DIR = path.join(process.cwd(), 'logs');
 
+const redactFormat = winston.format((info) => {
+  const mask = (text: string) => text.replace(/(sk-[a-zA-Z0-9-]{10,})|(key_[a-zA-Z0-9-]{10,})/g, "sk-****");
+  
+  if (typeof info.message === "string") {
+    info.message = mask(info.message);
+  }
+  
+  const redactObject = (obj: any) => {
+    for (const key in obj) {
+      if (typeof obj[key] === "string") {
+        obj[key] = mask(obj[key]);
+      } else if (typeof obj[key] === "object" && obj[key] !== null) {
+        redactObject(obj[key]);
+      }
+    }
+  };
+  
+  redactObject(info);
+  return info;
+});
+
 export const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.errors({ stack: true }),
+    redactFormat(),
     winston.format.json()
   ),
   transports: [

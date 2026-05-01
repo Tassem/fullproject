@@ -128,3 +128,13 @@ export function makeKeyHint(plainKey: string): string {
   if (!plainKey || plainKey.length < 4) return "****";
   return plainKey.slice(-4);
 }
+
+/**
+ * Redacts any OpenRouter or other API keys found within a block of text.
+ * Replaces them with "sk-****".
+ */
+export function redactText(text: string): string {
+  if (!text) return text;
+  return text
+    .replace(/(sk-[a-zA-Z0-9-]{10,})|(key_[a-zA-Z0-9-]{10,})/g, "sk-****");
+}
