@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useGetMe, getGetMeQueryKey } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 import {
   Undo2, Redo2, Save, Upload, Trash2, Lock, Unlock, Eye, EyeOff,
   Copy, ChevronUp, ChevronDown, ZoomIn, ZoomOut, AlignLeft, AlignCenter,
@@ -405,7 +406,24 @@ export default function TemplateBuilder() {
         if (resp.status === 402) {
            toast({ title: "Insufficient Credits", description: data.message || data.error, variant: "destructive" });
         } else if (resp.status === 403) {
-          toast({ title: "Feature not available", description: data.message || "AI Image Generation requires an upgrade. Visit Billing.", variant: "destructive" });
+          const errorCode = data.code || data.error;
+          if (errorCode === "BYOK_KEY_MISSING") {
+            toast({
+              title: "OpenRouter Key Missing",
+              description: "Please add your OpenRouter API key to use AI features. Visit the billing page.",
+              variant: "destructive",
+              action: <Button variant="outline" size="sm" onClick={() => window.location.href="/billing"}>Add Key</Button>
+            });
+          } else if (errorCode === "BYOK_KEY_INVALID") {
+            toast({
+              title: "OpenRouter Key Invalid",
+              description: "Your OpenRouter key is invalid or expired. Please update it in the billing page.",
+              variant: "destructive",
+              action: <Button variant="outline" size="sm" onClick={() => window.location.href="/billing"}>Update Key</Button>
+            });
+          } else {
+            toast({ title: "Feature not available", description: data.message || "AI Image Generation requires an upgrade. Visit Billing.", variant: "destructive" });
+          }
         } else {
           const err = new Error(data.message || data.error || "Image generation failed") as any;
           err.retryable = data.retryable;

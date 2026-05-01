@@ -269,7 +269,11 @@ export default function Landing() {
   });
 
   const s = data?.settings ?? {};
-  const plans = (data?.plans ?? []).sort((a, b) => a.sort_order - b.sort_order);
+  const allPlans = (data?.plans ?? []);
+  const plans = allPlans
+    .filter(p => p.plan_mode === "platform")
+    .sort((a, b) => a.sort_order - b.sort_order);
+  const hasByokPlans = allPlans.some(p => p.plan_mode === "byok");
   const registrationEnabled = s.registration_enabled !== "false";
   const siteName = s.site_name || "MediaFlow";
   const siteLogo = s.site_logo_emoji || "⚡";
@@ -681,6 +685,19 @@ export default function Landing() {
               );
             })}
           </div>
+
+          {hasByokPlans && (
+            <div className="mt-10 text-center animate-in fade-in slide-in-from-bottom-2 duration-700 delay-300">
+              <Link href="/subscription">
+                <div className="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-white/[0.03] border border-white/8 hover:border-white/20 transition-all cursor-pointer group">
+                  <span className="text-sm text-zinc-400 group-hover:text-white transition-colors">
+                    {isAr ? "متوفر أيضاً: خطط BYOK للمستخدمين المتقدمين ←" : "Also available: BYOK plans for power users →"}
+                  </span>
+                  <Badge variant="outline" className="bg-violet-500/10 text-violet-400 border-violet-500/20 text-[10px] font-bold">🔑 BYOK</Badge>
+                </div>
+              </Link>
+            </div>
+          )}
 
           {/* ── Compare Plans Table ──────────────────────────── */}
           <div className="mt-20">

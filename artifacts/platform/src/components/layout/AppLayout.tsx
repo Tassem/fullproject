@@ -1,4 +1,5 @@
 import { Sidebar } from "./Sidebar";
+import { ByokBanner } from "./ByokBanner";
 
 export function AppLayout({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
@@ -20,12 +21,17 @@ export function AppLayout({ children, title }: { children: React.ReactNode; titl
         pointerEvents: "none", zIndex: 0,
       }} />
 
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: "relative", zIndex: 1 }}>
-        <div className="container mx-auto p-6">
-          {children}
+      <div className="flex flex-col flex-1 h-full overflow-hidden">
+        <ByokBanner />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: "relative", zIndex: 1 }}>
+            <div className="container mx-auto p-6">
+              {children}
+            </div>
+          </main>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

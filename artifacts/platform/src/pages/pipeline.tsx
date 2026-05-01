@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Play, CheckCircle, XCircle, Clock, Zap } from "lucide-react";
 import { cn, formatDate, formatDuration } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
 
 const STAGE_LABELS: Record<string, string> = {
   rss_fetch: "RSS Fetch",
@@ -34,7 +35,27 @@ export function Pipeline() {
         toast({ title: "Pipeline triggered", description: data.message });
         qc.invalidateQueries();
       },
-      onError: () => toast({ title: "Error", description: "Failed to trigger pipeline.", variant: "destructive" }),
+      onError: (err: any) => {
+        const data = err.data;
+        const errorCode = data?.code || data?.error;
+        if (errorCode === "BYOK_KEY_MISSING") {
+          toast({
+            title: "OpenRouter Key Missing",
+            description: "Please add your OpenRouter API key to run the pipeline. Visit the billing page.",
+            variant: "destructive",
+            action: <Button variant="outline" size="sm" onClick={() => window.location.href="/billing"}>Add Key</Button>
+          });
+        } else if (errorCode === "BYOK_KEY_INVALID") {
+          toast({
+            title: "OpenRouter Key Invalid",
+            description: "Your OpenRouter key is invalid or expired. Please update it in the billing page.",
+            variant: "destructive",
+            action: <Button variant="outline" size="sm" onClick={() => window.location.href="/billing"}>Update Key</Button>
+          });
+        } else {
+          toast({ title: "Error", description: data?.message || "Failed to trigger pipeline.", variant: "destructive" });
+        }
+      },
     },
   });
 

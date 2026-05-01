@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Check, X, Zap, Building2, User, Star, AlertCircle, Newspaper, Rss, RefreshCw, Coins } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { Check, X, Zap, Building2, User, Star, AlertCircle, Newspaper, Rss, RefreshCw, Coins, ExternalLink } from "lucide-react";
 import { getUserCredits } from "@/lib/creditUtils";
 
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,7 @@ interface Plan {
   sort_order: number;
   is_active: boolean;
   is_free: boolean;
+  plan_mode: string;
 }
 
 interface Usage {
@@ -112,6 +113,14 @@ export default function Subscription() {
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
+  const [activeTab, setActiveTab] = useState<"platform" | "byok">(() => {
+    return (localStorage.getItem("pricing_tab_preference") as "platform" | "byok") || "platform";
+  });
+
+  const handleTabChange = (tab: "platform" | "byok") => {
+    setActiveTab(tab);
+    localStorage.setItem("pricing_tab_preference", tab);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem("pro_token");
@@ -146,6 +155,12 @@ export default function Subscription() {
   const resetDate = usage.credits_reset_date
     ? new Date(usage.credits_reset_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
     : null;
+
+  const filteredPlans = useMemo(() => {
+    return [...plans]
+      .filter(p => p.plan_mode === activeTab)
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }, [plans, activeTab]);
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir="ltr">
@@ -230,25 +245,101 @@ export default function Subscription() {
       </Card>
 
       {/* Plans Grid */}
-      <div>
-        <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-          <h2 className="text-xl font-semibold">Subscription Plans</h2>
-          <div className="flex items-center gap-1 rounded-lg border p-1 bg-muted/30 text-sm">
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <h2 className="text-2xl font-bold tracking-tight">Subscription Plans</h2>
+            <p className="text-sm text-muted-foreground">Choose the plan that fits your production needs</p>
+          </div>
+
+          <div className="flex items-center gap-1 rounded-xl border bg-muted/30 p-1">
             <button
-              className={cn("px-3 py-1 rounded-md transition-colors",
-                billing === "monthly" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground")}
+              className={cn("px-4 py-1.5 rounded-lg text-sm transition-all",
+                billing === "monthly" ? "bg-background shadow-sm font-semibold" : "text-muted-foreground hover:text-foreground")}
               onClick={() => setBilling("monthly")}>Monthly</button>
             <button
-              className={cn("px-3 py-1 rounded-md transition-colors",
-                billing === "yearly" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground")}
+              className={cn("px-4 py-1.5 rounded-lg text-sm transition-all flex items-center gap-2",
+                billing === "yearly" ? "bg-background shadow-sm font-semibold" : "text-muted-foreground hover:text-foreground")}
               onClick={() => setBilling("yearly")}>
-              Yearly <span className="ml-1 text-xs text-green-600 font-medium">Save ~20%</span>
+              Yearly
+              <Badge className="bg-green-500/15 text-green-600 border-0 text-[10px] px-1.5 h-4 font-bold">SAVE 20%</Badge>
             </button>
           </div>
         </div>
 
+        {/* Tab Switcher */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => handleTabChange("platform")}
+            className={cn(
+              "flex flex-col items-start px-6 py-3 rounded-2xl border transition-all text-left min-w-[180px]",
+              activeTab === "platform"
+                ? "bg-indigo-500/5 border-indigo-500/30 ring-1 ring-indigo-500/20"
+                : "bg-muted/20 border-transparent hover:border-muted-foreground/20"
+            )}
+          >
+            <div className="flex items-center gap-2 font-bold text-sm">
+              <span className="text-lg">🖥️</span> Platform AI
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-0.5">We handle everything</div>
+          </button>
+
+          <button
+            onClick={() => handleTabChange("byok")}
+            className={cn(
+              "flex flex-col items-start px-6 py-3 rounded-2xl border transition-all text-left min-w-[180px]",
+              activeTab === "byok"
+                ? "bg-violet-500/5 border-violet-500/30 ring-1 ring-violet-500/20"
+                : "bg-muted/20 border-transparent hover:border-muted-foreground/20"
+            )}
+          >
+            <div className="flex items-center gap-2 font-bold text-sm">
+              <span className="text-lg">🔑</span> Your Key
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mt-0.5">Save more points</div>
+          </button>
+        </div>
+
+        {/* BYOK Info Banner */}
+        {activeTab === "byok" && (
+          <Card className="bg-gradient-to-r from-violet-500/10 via-transparent to-transparent border-violet-500/20 overflow-hidden relative group">
+            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+              <Zap className="h-24 w-24" />
+            </div>
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-violet-400">
+                    <Check className="h-5 w-5" />
+                    <h3 className="font-bold">Bring Your Own OpenRouter Key</h3>
+                  </div>
+                  <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
+                    <li className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Get more points for the same price</li>
+                    <li className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Use your own OpenRouter API account</li>
+                    <li className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-violet-400" /> Same features as Platform AI plans</li>
+                    <li className="flex items-center gap-2"><div className="h-1.5 w-1.5 rounded-full bg-violet-400" /> You manage your own AI usage costs</li>
+                  </ul>
+                </div>
+                <Button variant="outline" className="shrink-0 border-violet-500/30 hover:bg-violet-500/10" asChild>
+                  <a href="https://openrouter.ai" target="_blank" rel="noreferrer" className="flex items-center gap-2">
+                    What is OpenRouter? <ExternalLink className="h-3 w-3" />
+                  </a>
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {[...plans].sort((a, b) => a.sort_order - b.sort_order).map(plan => {
+          {filteredPlans.length === 0 ? (
+            <div className="col-span-full py-20 text-center border-2 border-dashed rounded-3xl bg-muted/10">
+              <div className="text-4xl mb-4">🔑</div>
+              <h3 className="text-lg font-bold">BYOK plans coming soon</h3>
+              <p className="text-muted-foreground text-sm max-w-xs mx-auto mt-1">
+                We are finalizing our BYOK infrastructure. Contact us to learn more about early access.
+              </p>
+            </div>
+          ) : filteredPlans.map(plan => {
             const isActive = plan.slug === currentPlan;
             const Icon = PLAN_ICONS[plan.slug] ?? User;
             const ac = PLAN_ACCENT[plan.slug] ?? PLAN_ACCENT.free;
@@ -256,12 +347,26 @@ export default function Subscription() {
               ? Math.round(plan.price_yearly / 12)
               : plan.price_monthly;
 
+            // Find equivalent platform plan for comparison
+            const equivalentPlatformPlan = activeTab === "byok" 
+              ? plans.find(p => p.plan_mode === "platform" && p.price_monthly === plan.price_monthly)
+              : null;
+            
+            const multiplier = equivalentPlatformPlan && equivalentPlatformPlan.monthly_credits > 0
+              ? (plan.monthly_credits / equivalentPlatformPlan.monthly_credits).toFixed(1)
+              : null;
+
             return (
               <Card key={plan.id} className={cn("flex flex-col relative transition-all",
                 isActive ? `ring-2 ${ac.ring} shadow-lg scale-[1.02]` : "hover:shadow-md")}>
                 {isActive && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
                     <Badge className="bg-primary text-primary-foreground px-3 text-xs">Current Plan</Badge>
+                  </div>
+                )}
+                {activeTab === "byok" && (
+                   <div className="absolute top-2 right-2 z-10">
+                    <Badge variant="outline" className="bg-violet-500/10 text-violet-400 border-violet-500/20 text-[10px] font-bold">🔑 BYOK</Badge>
                   </div>
                 )}
                 <div className={cn("h-1.5 w-full rounded-t-xl", ac.bar)} />
@@ -299,6 +404,14 @@ export default function Subscription() {
                       <FeatureRow label="Monthly credits" value={displayNum(plan.monthly_credits, " cr")} active={true} />
                       <FeatureRow label="Daily limit" value={displayNum(plan.rate_limit_daily, "/day")} active={true} />
                     </ul>
+                    {activeTab === "byok" && (
+                      <p className="text-[10px] text-muted-foreground mt-1.5 italic">Use your own OpenRouter key</p>
+                    )}
+                    {multiplier && Number(multiplier) > 1 && (
+                      <div className="mt-2 p-2 rounded-lg bg-green-500/5 border border-green-500/10 text-[10px] text-green-600 font-bold">
+                         🔥 vs Platform plan: Get {multiplier}x more points for the same price
+                      </div>
+                    )}
                   </div>
 
                   {/* Image Design */}
