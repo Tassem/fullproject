@@ -88,9 +88,54 @@ const DEFAULT: CE[] = [
     fontFamily: "Inter", fontWeight: "800", borderRadius: 999 },
 ];
 
+const useAuthenticatedImage = (url: string) => {
+  const [src, setSrc] = useState<string>("");
+  useEffect(() => {
+    if (!url) {
+      setSrc("");
+      return;
+    }
+    // If it's a local data URL or already a blob, use it directly
+    if (url.startsWith("data:") || url.startsWith("blob:")) {
+      setSrc(url);
+      return;
+    }
+    // If it's not an API photo, use it directly
+    if (!url.startsWith("/api/photo")) {
+      setSrc(url);
+      return;
+    }
+
+    const token = localStorage.getItem("pro_token");
+    let isMounted = true;
+    let objectUrl = "";
+
+    fetch(url, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    .then(res => res.ok ? res.blob() : Promise.reject())
+    .then(blob => {
+      if (isMounted) {
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      }
+    })
+    .catch(() => {
+      if (isMounted) setSrc("");
+    });
+
+    return () => {
+      isMounted = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+  return src;
+};
+
 // ─── Render element content ───────────────────────────────────────────────────
 function ElContent({ el, scale }: { el: CE; scale: number }) {
   const plat = SOCIALS.find(p => p.id === el.platform) ?? SOCIALS[0];
+  const authSrc = useAuthenticatedImage(el.src || "");
 
   if (el.type === "bg") {
     const isTransparent = el.fill === "transparent";
@@ -98,8 +143,8 @@ function ElContent({ el, scale }: { el: CE; scale: number }) {
       <div style={{
         width: "100%", height: "100%",
         backgroundColor: isTransparent ? "transparent" : (el.fill || "#000"),
-        backgroundImage: el.src
-          ? `url(${el.src})`
+        backgroundImage: authSrc
+          ? `url(${authSrc})`
           : isTransparent
             ? "repeating-conic-gradient(#555 0% 25%, #333 0% 50%)"
             : (el.gradient ?? undefined),
@@ -118,8 +163,8 @@ function ElContent({ el, scale }: { el: CE; scale: number }) {
       display: "flex", alignItems: "center", justifyContent: "center",
       opacity: el.opacity ?? 1,
     }}>
-      {el.src
-        ? <img src={el.src} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+      {authSrc
+        ? <img src={authSrc} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         : <div style={{
             position: "absolute", inset: 0,
             border: `${1.5 * scale}px dashed rgba(255,255,255,0.18)`,
@@ -211,8 +256,8 @@ function ElContent({ el, scale }: { el: CE; scale: number }) {
       display: "flex", alignItems: "center", justifyContent: "center",
       opacity: el.opacity ?? 1,
     }}>
-      {el.src
-        ? <img src={el.src} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+      {authSrc
+        ? <img src={authSrc} style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
         : <div style={{
             border: `${1.5 * scale}px dashed rgba(255,255,255,0.35)`,
             borderRadius: 6 * scale, width: "100%", height: "100%",

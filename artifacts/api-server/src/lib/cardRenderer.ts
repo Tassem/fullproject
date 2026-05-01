@@ -292,11 +292,14 @@ export async function renderFromCanvasLayout(
           const angle = angleMatch ? parseInt(angleMatch[1]) : 180;
           const grad = createAngledGradient(ctx, ex, ey, ew, eh, angle);
           
-          const stops = el.gradient.match(/(rgba?\([^)]+\)|#[0-9a-f]+)\s+(\d+)%/gi) || [];
+          const stops = el.gradient.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})(?:\s+(\d+)%)?/gi) || [];
           if (stops.length >= 2) {
-            for (const stop of stops) {
-              const m = stop.match(/(rgba?\([^)]+\)|#[0-9a-f]+)\s+(\d+)%/i);
-              if (m) grad.addColorStop(parseInt(m[2]) / 100, m[1]);
+            for (let i = 0; i < stops.length; i++) {
+              const m = stops[i].match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})(?:\s+(\d+)%)?/i);
+              if (m) {
+                const pos = m[2] ? parseInt(m[2]) / 100 : i / (stops.length - 1);
+                grad.addColorStop(pos, m[1]);
+              }
             }
           } else {
             grad.addColorStop(0, el.fill || "#1a2035");
@@ -323,11 +326,14 @@ export async function renderFromCanvasLayout(
           const angle = angleMatch ? parseInt(angleMatch[1]) : 180;
           const g = createAngledGradient(ctx, ex, ey, ew, eh, angle);
 
-          const stops = el.gradient.match(/(rgba?\([^)]+\)|#[0-9a-f]+)\s+(\d+)%/gi) || [];
+          const stops = el.gradient.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})(?:\s+(\d+)%)?/gi) || [];
           if (stops.length >= 2) {
-            for (const s of stops) {
-              const m = s.match(/(rgba?\([^)]+\)|#[0-9a-f]+)\s+(\d+)%/i);
-              if (m) g.addColorStop(parseInt(m[2]) / 100, m[1]);
+            for (let i = 0; i < stops.length; i++) {
+              const m = stops[i].match(/(rgba?\([^)]+\)|#[0-9a-fA-F]{3,8})(?:\s+(\d+)%)?/i);
+              if (m) {
+                const pos = m[2] ? parseInt(m[2]) / 100 : i / (stops.length - 1);
+                g.addColorStop(pos, m[1]);
+              }
             }
             fillStyle = g;
           }
@@ -657,7 +663,9 @@ export async function renderCard(opts: RenderCardOptions): Promise<Buffer> {
       const colorMatch = gStr.match(/gradient\(135deg,\s*([^,]+),\s*([^)]+)\)/);
       const c1 = colorMatch ? colorMatch[1].trim() : bannerColor;
       const c2 = colorMatch ? colorMatch[2].trim() : bannerColor;
-      const grad = ctx.createLinearGradient(0, bannerAreaY, W, H);
+      
+      // FIX: use createAngledGradient and stay within banner bounds
+      const grad = createAngledGradient(ctx, 0, bannerAreaY, W, bannerAreaH, 135);
       grad.addColorStop(0, c1);
       grad.addColorStop(1, c2);
       ctx.fillStyle = grad;
