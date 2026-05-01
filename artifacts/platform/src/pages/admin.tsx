@@ -1,10 +1,14 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAuth } from "../hooks/useAuth";
+import { useLocation } from "wouter";
 
 type PlanSlug = "free" | "starter" | "pro" | "business";
 interface AdminUser {
   id: number; name: string; email: string; plan: PlanSlug;
   daily_usage_count: number; totalImages: number; isAdmin: boolean;
   botCode: string | null; createdAt: string;
+  has_openrouter_key: boolean;
+  openrouter_key_valid: boolean;
 }
 interface Stats {
   totalUsers: number; proUsers: number; freeUsers: number;
@@ -26,6 +30,7 @@ interface AdminPlan {
   has_ai_image_generation: boolean;
   has_priority_support: boolean; has_priority_processing: boolean;
   is_active: boolean; is_free: boolean; sort_order: number;
+  plan_mode: "platform" | "byok";
 }
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
@@ -103,11 +108,9 @@ const getSafeHost = (url: string) => {
 
 // ─── Main ──────────────────────────────────────────────────────────────────
 export default function Admin() {
-  const [token, setToken]             = useState(() => localStorage.getItem("ncg_admin_token") || "");
-  const [loginEmail, setLoginEmail]   = useState("");
-  const [loginPass, setLoginPass]     = useState("");
-  const [loginError, setLoginError]   = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
+  const { user, token, isLoading: authLoading, isAuthenticated } = useAuth();
+  const [, setLocation] = useLocation();
+
   const [adminName, setAdminName]     = useState("");
   const [stats, setStats]             = useState<Stats | null>(null);
   const [users, setUsers]             = useState<AdminUser[]>([]);
@@ -228,7 +231,7 @@ export default function Admin() {
   const [expandedProof, setExpandedProof]   = useState<number | null>(null);
   const [approvalMsg, setApprovalMsg]       = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  const authHeaders = useCallback(() => ({
+  const authHeaders = useMemo(() => ({
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
   }), [token]);
@@ -242,10 +245,12 @@ export default function Admin() {
         fetch("/api/admin/plans",  { headers: { Authorization: `Bearer ${t}` } }),
       ]);
       if (sR.status === 403 || sR.status === 401) {
-        localStorage.removeItem("ncg_admin_token"); setToken(""); return;
+        return;
       }
       const [s, u, i, p] = await Promise.all([sR.json(), uR.json(), iR.json(), pR.json()]);
-      setStats(s); setUsers(u); setImages(i);
+      setStats(s);
+      setUsers(Array.isArray(u) ? u : (u.users || []));
+      setImages(Array.isArray(i) ? i : (i.images || []));
       if (Array.isArray(p)) setAdminPlans(p);
       const bR = await fetch("/api/settings/telegram", { headers: { Authorization: `Bearer ${t}` } });
       if (bR.ok) setBotStatus(await bR.json());
@@ -300,7 +305,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (token) {
-      fetch("/api/admin/nanobanana/status", { headers: authHeaders() })
+      fetch("/api/admin/nanobanana/status", { headers: authHeaders })
         .then(r => r.json())
         .then(setNbStatus)
         .catch(console.error);
@@ -381,27 +386,15 @@ export default function Admin() {
     finally { setHomepageSaving(false); }
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault(); setLoginError(""); setLoginLoading(true);
-    try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: loginEmail, password: loginPass }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setLoginError(data.error || "Login failed"); return; }
-      localStorage.setItem("ncg_admin_token", data.token);
-      setToken(data.token);
-      setAdminName(data.admin?.name || "Admin");
-    } catch { setLoginError("Connection error"); }
-    finally { setLoginLoading(false); }
-  };
+  useEffect(() => {
+    if (user) setAdminName(user.name);
+  }, [user]);
 
   const handlePlanChange = async (userId: number, plan: PlanSlug) => {
     setUpdatingId(userId);
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ plan }),
+        method: "PATCH", headers: authHeaders, body: JSON.stringify({ plan }),
       });
       if (res.ok) setUsers(prev => prev.map(u => u.id === userId ? { ...u, plan } : u));
     } finally { setUpdatingId(null); }
@@ -413,7 +406,7 @@ export default function Admin() {
       const isNew = editingPlan.id === -1;
       const url = isNew ? "/api/admin/plans" : `/api/admin/plans/${editingPlan.id}`;
       const res = await fetch(url, {
-        method: isNew ? "POST" : "PUT", headers: authHeaders(), body: JSON.stringify(editingPlan),
+        method: isNew ? "POST" : "PUT", headers: authHeaders, body: JSON.stringify(editingPlan),
       });
       if (res.ok) {
         const saved = await res.json();
@@ -426,7 +419,7 @@ export default function Admin() {
 
   const handleDeletePlan = async (id: number) => {
     if (!confirm("Are you sure you want to delete this plan?")) return;
-    const res = await fetch(`/api/admin/plans/${id}`, { method: "DELETE", headers: authHeaders() });
+    const res = await fetch(`/api/admin/plans/${id}`, { method: "DELETE", headers: authHeaders });
     if (res.ok) setAdminPlans(prev => prev.filter(p => p.id !== id));
   };
 
@@ -434,7 +427,7 @@ export default function Admin() {
     setUpdatingId(userId);
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
-        method: "PATCH", headers: authHeaders(), body: JSON.stringify({ isAdmin }),
+        method: "PATCH", headers: authHeaders, body: JSON.stringify({ isAdmin }),
       });
       if (res.ok) setUsers(prev => prev.map(u => u.id === userId ? { ...u, isAdmin } : u));
     } finally { setUpdatingId(null); }
@@ -442,7 +435,7 @@ export default function Admin() {
 
   const handleDelete = async (userId: number) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE", headers: authHeaders() });
+      const res = await fetch(`/api/admin/users/${userId}`, { method: "DELETE", headers: authHeaders });
       if (res.ok) { setUsers(prev => prev.filter(u => u.id !== userId)); setConfirmDeleteId(null); }
     } catch {}
   };
@@ -451,7 +444,7 @@ export default function Admin() {
     if (!newBotToken.trim()) return; setBotLoading(true);
     try {
       const res = await fetch("/api/settings/telegram", {
-        method: "PUT", headers: authHeaders(), body: JSON.stringify({ token: newBotToken.trim() }),
+        method: "PUT", headers: authHeaders, body: JSON.stringify({ token: newBotToken.trim() }),
       });
       const data = await res.json();
       if (res.ok) { alert(`Connected successfully: @${data.botUsername}`); setNewBotToken(""); loadData(token); }
@@ -462,7 +455,7 @@ export default function Admin() {
   const handleRemoveBot = async () => {
     if (!confirm("Remove bot?")) return; setBotLoading(true);
     try {
-      const res = await fetch("/api/settings/telegram", { method: "DELETE", headers: authHeaders() });
+      const res = await fetch("/api/settings/telegram", { method: "DELETE", headers: authHeaders });
       if (res.ok) loadData(token);
     } finally { setBotLoading(false); }
   };
@@ -470,7 +463,7 @@ export default function Admin() {
   // ── WhatsApp handlers ─────────────────────────────────────────────────────
   const fetchWAStatus = async () => {
     try {
-      const res = await fetch("/api/whatsapp/status", { headers: authHeaders() });
+      const res = await fetch("/api/whatsapp/status", { headers: authHeaders });
       if (!res.ok) return;
       const d = await res.json();
       setWaStatus(d.status);
@@ -493,7 +486,7 @@ export default function Admin() {
   const handleWAStart = async () => {
     setWaLoading(true);
     try {
-      await fetch("/api/whatsapp/start", { method: "POST", headers: authHeaders() });
+      await fetch("/api/whatsapp/start", { method: "POST", headers: authHeaders });
       startWAPolling();
     } finally { setWaLoading(false); }
   };
@@ -501,7 +494,7 @@ export default function Admin() {
   const handleWAStop = async () => {
     setWaLoading(true);
     try {
-      await fetch("/api/whatsapp/stop", { method: "POST", headers: authHeaders() });
+      await fetch("/api/whatsapp/stop", { method: "POST", headers: authHeaders });
       stopWAPolling();
       setWaStatus("disconnected"); setWaQr(null); setWaPhone(null);
     } finally { setWaLoading(false); }
@@ -511,7 +504,7 @@ export default function Admin() {
     if (!confirm("WhatsApp will be disconnected and the session deleted. You will need to scan QR again. Are you sure?")) return;
     setWaLoading(true);
     try {
-      await fetch("/api/whatsapp/logout", { method: "POST", headers: authHeaders() });
+      await fetch("/api/whatsapp/logout", { method: "POST", headers: authHeaders });
       stopWAPolling();
       setWaStatus("disconnected"); setWaQr(null); setWaPhone(null);
     } finally { setWaLoading(false); }
@@ -566,7 +559,7 @@ export default function Admin() {
     try {
       const r = await fetch(`/api/admin/payments/${id}/${action}`, {
         method: "POST",
-        headers: authHeaders(),
+        headers: authHeaders,
         body: JSON.stringify({ adminNotes: payNotes[id] ?? "" }),
       });
       const d = await r.json();
@@ -582,7 +575,7 @@ export default function Admin() {
 
   const handleApprove = async (id: number) => {
     setApprovalMsg(null);
-    const res = await fetch(`/api/admin/templates/${id}/approve`, { method: "POST", headers: authHeaders() });
+    const res = await fetch(`/api/admin/templates/${id}/approve`, { method: "POST", headers: authHeaders });
     if (res.ok) {
       setPendingTmpls(p => p.filter(t => t.id !== id));
       setApprovalMsg({ type: "ok", text: "✅ Template approved and published in gallery" });
@@ -593,7 +586,7 @@ export default function Admin() {
 
   const handleReject = async (id: number) => {
     setApprovalMsg(null);
-    const res = await fetch(`/api/admin/templates/${id}/reject`, { method: "POST", headers: authHeaders() });
+    const res = await fetch(`/api/admin/templates/${id}/reject`, { method: "POST", headers: authHeaders });
     if (res.ok) {
       setPendingTmpls(p => p.filter(t => t.id !== id));
       setApprovalMsg({ type: "ok", text: "🚫 Template rejected and hidden from gallery" });
@@ -607,13 +600,13 @@ export default function Admin() {
     setAiLoading(true); setTmplMsg(null);
     try {
       const res = await fetch("/api/admin/system-templates/ai-generate", {
-        method: "POST", headers: authHeaders(), body: JSON.stringify({ prompt: aiPromptText }),
+        method: "POST", headers: authHeaders, body: JSON.stringify({ prompt: aiPromptText }),
       });
       const data = await res.json();
       if (res.ok && data.template) {
         const tmpl = { ...data.template, aiPrompt: aiPromptText, isActive: true };
         const saveRes = await fetch("/api/admin/system-templates", {
-          method: "POST", headers: authHeaders(), body: JSON.stringify(tmpl),
+          method: "POST", headers: authHeaders, body: JSON.stringify(tmpl),
         });
         if (saveRes.ok) {
           const saved = await saveRes.json();
@@ -635,7 +628,7 @@ export default function Admin() {
       const isNew = !editingTmpl.id;
       const url = isNew ? "/api/admin/system-templates" : `/api/admin/system-templates/${editingTmpl.id}`;
       const res = await fetch(url, {
-        method: isNew ? "POST" : "PUT", headers: authHeaders(), body: JSON.stringify(editingTmpl),
+        method: isNew ? "POST" : "PUT", headers: authHeaders, body: JSON.stringify(editingTmpl),
       });
       const data = await res.json();
       if (res.ok) {
@@ -649,13 +642,13 @@ export default function Admin() {
 
   const handleDeleteTmpl = async (id: number) => {
     if (!confirm("Delete template?")) return;
-    const res = await fetch(`/api/admin/system-templates/${id}`, { method: "DELETE", headers: authHeaders() });
+    const res = await fetch(`/api/admin/system-templates/${id}`, { method: "DELETE", headers: authHeaders });
     if (res.ok) setSysTmpls(p => p.filter(t => t.id !== id));
   };
 
   const handleToggleTmpl = async (t: any) => {
     const res = await fetch(`/api/admin/system-templates/${t.id}`, {
-      method: "PUT", headers: authHeaders(), body: JSON.stringify({ isActive: !t.isActive }),
+      method: "PUT", headers: authHeaders, body: JSON.stringify({ isActive: !t.isActive }),
     });
     if (res.ok) setSysTmpls(p => p.map(x => x.id === t.id ? { ...x, isActive: !x.isActive } : x));
   };
@@ -674,95 +667,30 @@ export default function Admin() {
     transition: "border-color 0.2s",
   };
 
-  // ── LOGIN PAGE ────────────────────────────────────────────────────────────
-  if (!token) {
+  if (authLoading) {
     return (
-      <div style={{
-        minHeight: "100vh", background: BG,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: "'Inter', sans-serif", direction: "ltr",
-        position: "relative", overflow: "hidden",
-      }}>
-        {/* Glows */}
-        <div style={{ position: "absolute", top: "20%", left: "60%", width: 500, height: 500, background: "radial-gradient(ellipse, rgba(99,102,241,0.1) 0%, transparent 60%)", pointerEvents: "none" }} />
-        <div style={{ position: "absolute", bottom: "10%", left: "20%", width: 400, height: 400, background: "radial-gradient(ellipse, rgba(34,211,238,0.07) 0%, transparent 60%)", pointerEvents: "none" }} />
-        {/* Dot grid */}
-        <div style={{ position: "absolute", inset: 0, backgroundImage: "radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px)", backgroundSize: "28px 28px", pointerEvents: "none" }} />
+      <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", color: TEXT }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Loading Admin Panel...</div>
+        </div>
+      </div>
+    );
+  }
 
-        <div style={{
-          width: 380, position: "relative",
-          background: SURFACE,
-          border: `1px solid ${BORDER2}`,
-          borderRadius: 20, padding: "40px 32px",
-          backdropFilter: "blur(20px)",
-          boxShadow: "0 30px 80px rgba(0,0,0,0.5)",
-        }}>
-          {/* Logo */}
-          <div style={{ textAlign: "center", marginBottom: 32 }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: 14,
-              background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              margin: "0 auto 16px",
-              fontSize: 24, fontWeight: 900, color: "#fff",
-              boxShadow: `0 0 30px rgba(99,102,241,0.4)`,
-            }}>🛡️</div>
-            <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", margin: 0, marginBottom: 6 }}>Admin Panel</h1>
-            <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>News Card Pro — Admin Panel</p>
-          </div>
-
-          <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div>
-              <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600, letterSpacing: "0.04em" }}>Email Address</label>
-              <input
-                type="email" value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)} required dir="ltr"
-                style={{ ...inputStyle, fontFamily: "monospace" }}
-                onFocus={e => e.currentTarget.style.borderColor = ACCENT}
-                onBlur={e => e.currentTarget.style.borderColor = BORDER}
-                placeholder="admin@example.com"
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600, letterSpacing: "0.04em" }}>Password</label>
-              <input
-                type="password" value={loginPass}
-                onChange={e => setLoginPass(e.target.value)} required dir="ltr"
-                style={inputStyle}
-                onFocus={e => e.currentTarget.style.borderColor = ACCENT}
-                onBlur={e => e.currentTarget.style.borderColor = BORDER}
-              />
-            </div>
-
-            {loginError && (
-              <div style={{
-                background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
-                borderRadius: 10, padding: "10px 14px",
-                color: "#fca5a5", fontSize: 13, direction: "ltr",
-              }}>{loginError}</div>
-            )}
-
-            <button type="submit" disabled={loginLoading} style={{
-              background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`,
-              color: "#fff", border: "none",
-              padding: "13px", borderRadius: 10,
-              fontSize: 15, fontWeight: 700, cursor: loginLoading ? "wait" : "pointer",
-              fontFamily: "'Inter', sans-serif",
-              marginTop: 4,
-              boxShadow: `0 4px 24px rgba(99,102,241,0.4)`,
-              transition: "all 0.2s",
-              opacity: loginLoading ? 0.8 : 1,
-            }}>
-              {loginLoading ? "⏳ Verifying..." : "Admin Sign In"}
-            </button>
-          </form>
-
-          <div style={{ marginTop: 24, textAlign: "center" }}>
-            <a href="/pro/login" style={{ fontSize: 12, color: MUTED, textDecoration: "none" }}
-              onMouseEnter={e => e.currentTarget.style.color = TEXT}
-              onMouseLeave={e => e.currentTarget.style.color = MUTED}
-            >← Back to login</a>
-          </div>
+  if (!isAuthenticated || !user?.isAdmin) {
+    return (
+      <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", color: TEXT }}>
+        <div style={{ textAlign: "center", maxWidth: 400, padding: 30, background: SURFACE, border: `1px solid ${RED}`, borderRadius: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 20 }}>🚫</div>
+          <h1 style={{ fontSize: 24, fontWeight: 800, marginBottom: 12 }}>Access Denied</h1>
+          <p style={{ color: MUTED, fontSize: 14, marginBottom: 24 }}>
+            You do not have administrative privileges to access this area.
+          </p>
+          <button onClick={() => setLocation("/")} style={{
+            background: SURFACE, border: `1px solid ${BORDER}`, color: TEXT,
+            padding: "10px 20px", borderRadius: 10, cursor: "pointer", fontWeight: 600
+          }}>Return Home</button>
         </div>
       </div>
     );
@@ -774,7 +702,7 @@ export default function Admin() {
     setSettingsSaving("google"); setSettingsMsg(null);
     try {
       const r = await fetch("/api/settings/google", {
-        method: "PUT", headers: authHeaders(),
+        method: "PUT", headers: authHeaders,
         body: JSON.stringify({ clientId: newGoogleId.trim() }),
       });
       const d = await r.json();
@@ -791,7 +719,7 @@ export default function Admin() {
     try {
       const res = await fetch("/api/settings", {
         method: "PUT",
-        headers: authHeaders(),
+        headers: authHeaders,
         body: JSON.stringify({
           settings: [
             { key: "ai_image_generation_enabled", value: String(aiSettings.enabled) },
@@ -820,7 +748,7 @@ export default function Admin() {
   const handleDeleteGoogle = async () => {
     setSettingsSaving("google-del"); setSettingsMsg(null);
     try {
-      await fetch("/api/settings/google", { method: "DELETE", headers: authHeaders() });
+      await fetch("/api/settings/google", { method: "DELETE", headers: authHeaders });
       await loadSettings();
       setSettingsMsg({ key: "google", type: "ok", text: "✅ Google Client ID removed" });
     } catch { setSettingsMsg({ key: "google", type: "err", text: "An error occurred" }); }
@@ -831,7 +759,7 @@ export default function Admin() {
     setSettingsSaving("smtp"); setSettingsMsg(null);
     try {
       const r = await fetch("/api/settings/smtp", {
-        method: "PUT", headers: authHeaders(),
+        method: "PUT", headers: authHeaders,
         body: JSON.stringify(smtpForm),
       });
       const d = await r.json();
@@ -845,7 +773,7 @@ export default function Admin() {
   const handleDeleteSMTP = async () => {
     setSettingsSaving("smtp-del"); setSettingsMsg(null);
     try {
-      await fetch("/api/settings/smtp", { method: "DELETE", headers: authHeaders() });
+      await fetch("/api/settings/smtp", { method: "DELETE", headers: authHeaders });
       setSmtpForm({ host: "", port: "587", user: "", pass: "", from: "" });
       await loadSettings();
       setSettingsMsg({ key: "smtp", type: "ok", text: "✅ Email settings removed" });
@@ -857,7 +785,7 @@ export default function Admin() {
     setSettingsSaving("test"); setSettingsMsg(null);
     try {
       const r = await fetch("/api/settings/smtp/test", {
-        method: "POST", headers: authHeaders(),
+        method: "POST", headers: authHeaders,
         body: JSON.stringify({ to: testEmailTo }),
       });
       const d = await r.json();
@@ -871,7 +799,7 @@ export default function Admin() {
     setSettingsSaving("provider"); setSettingsMsg(null);
     try {
       const res = await fetch("/api/settings", {
-        method: "PUT", headers: authHeaders(),
+        method: "PUT", headers: authHeaders,
         body: JSON.stringify({
           settings: [
             { key: "ai_image_provider", value: providerSettings.provider },
@@ -900,7 +828,7 @@ export default function Admin() {
   const handleTestNanobanana = async () => {
     setNbTesting(true);
     try {
-      const r = await fetch("/api/admin/nanobanana/test", { method: "POST", headers: authHeaders() });
+      const r = await fetch("/api/admin/nanobanana/test", { method: "POST", headers: authHeaders });
       const d = await r.json();
       setNbStatus((prev: any) => ({ ...prev, lastTestResult: d }));
     } catch (err) {
@@ -909,7 +837,7 @@ export default function Admin() {
   };
 
   const handleClearNbCache = async () => {
-    const r = await fetch("/api/admin/nanobanana/clear-cache", { method: "POST", headers: authHeaders() });
+    const r = await fetch("/api/admin/nanobanana/clear-cache", { method: "POST", headers: authHeaders });
     if (r.ok) alert("Cache cleared successfully");
   };
 
@@ -918,7 +846,7 @@ export default function Admin() {
     try {
       const r = await fetch("/api/admin/openai/test", {
         method: "POST",
-        headers: authHeaders(),
+        headers: authHeaders,
         body: JSON.stringify({ apiKey: providerSettings.openai.apiKey })
       });
       const d = await r.json();
@@ -1278,7 +1206,7 @@ export default function Admin() {
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                 <thead>
                   <tr style={{ background: "rgba(255,255,255,0.02)" }}>
-                    {["#", "Name / Email", "Plan", "Bot Code", "Images", "Today", "Actions"].map(h => (
+                    {["#", "Name / Email", "Plan", "Key Status", "Bot Code", "Images", "Today", "Actions"].map(h => (
                       <th key={h} style={{ padding: "13px 16px", color: MUTED, fontWeight: 600, textAlign: "left", borderBottom: `1px solid ${BORDER}`, whiteSpace: "nowrap" }}>{h}</th>
                     ))}
                   </tr>
@@ -1310,6 +1238,20 @@ export default function Admin() {
                       </td>
                       <td style={{ padding: "12px 16px" }}><PlanBadge plan={u.plan} /></td>
                       <td style={{ padding: "12px 16px" }}>
+                        {u.has_openrouter_key ? (
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 6,
+                            background: u.openrouter_key_valid ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)",
+                            color: u.openrouter_key_valid ? GREEN : RED,
+                            border: `1px solid ${u.openrouter_key_valid ? "rgba(34,197,94,0.2)" : "rgba(239,68,68,0.2)"}`
+                          }}>
+                            {u.openrouter_key_valid ? "Active" : "Invalid"}
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 10, color: MUTED }}>None</span>
+                        )}
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
                         <span style={{ fontFamily: "monospace", fontSize: 11, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, padding: "2px 8px", borderRadius: 6, color: MUTED }}>
                           {u.botCode || "—"}
                         </span>
@@ -1323,13 +1265,15 @@ export default function Admin() {
                           ) : (
                             <>
                               <select value={u.plan}
-                                onChange={e => handlePlanChange(u.id, e.target.value as PlanSlug)}
+                                onChange={e => handlePlanChange(u.id, e.target.value as any)}
                                 style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 7, fontSize: 11, padding: "4px 8px", fontFamily: "'Inter', sans-serif", cursor: "pointer" }}
                               >
-                                <option value="free">Free</option>
-                                <option value="starter">Starter</option>
-                                <option value="pro">Pro</option>
-                                <option value="business">Business</option>
+                                {adminPlans.map(p => (
+                                  <option key={p.id} value={p.slug}>{p.name}</option>
+                                ))}
+                                {!adminPlans.find(p => p.slug === u.plan) && (
+                                  <option value={u.plan}>{u.plan} (Custom)</option>
+                                )}
                               </select>
                               {!u.isAdmin
                                 ? <button onClick={() => handleAdminToggle(u.id, true)} style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: AMBER, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }} title="Grant Admin privileges">🛡️</button>
@@ -1395,7 +1339,7 @@ export default function Admin() {
         {activeTab === "plans" && (
           <div>
             <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
-              <button onClick={() => setEditingPlan({ id: -1, name: "", slug: "", description: null, price_monthly: 0, price_yearly: 0, monthly_credits: 30, rate_limit_daily: 10, max_templates: 3, max_saved_designs: 5, max_sites: 0, has_api_access: false, has_telegram_bot: false, has_overlay_upload: false, has_custom_watermark: false, has_blog_automation: false, has_image_generator: true, has_ai_image_generation: false, has_priority_support: false, has_priority_processing: false, is_active: true, is_free: false, sort_order: adminPlans.length })}
+              <button onClick={() => setEditingPlan({ id: -1, name: "", slug: "", description: null, price_monthly: 0, price_yearly: 0, monthly_credits: 30, rate_limit_daily: 10, max_templates: 3, max_saved_designs: 5, max_sites: 0, has_api_access: false, has_telegram_bot: false, has_overlay_upload: false, has_custom_watermark: false, has_blog_automation: false, has_image_generator: true, has_ai_image_generation: false, has_priority_support: false, has_priority_processing: false, is_active: true, is_free: false, sort_order: adminPlans.length, plan_mode: "platform" })}
                 style={{ background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`, color: "#fff", border: "none", padding: "10px 22px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
                 + Add New Plan
               </button>
@@ -1410,7 +1354,12 @@ export default function Admin() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                     <div>
                       <div style={{ fontWeight: 800, fontSize: 16, color: "#fff", marginBottom: 4 }}>{plan.name}</div>
-                      <span style={{ fontFamily: "monospace", fontSize: 11, color: MUTED, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, padding: "2px 8px", borderRadius: 6 }}>{plan.slug}</span>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 11, color: MUTED, background: "rgba(255,255,255,0.04)", border: `1px solid ${BORDER}`, padding: "2px 8px", borderRadius: 6 }}>{plan.slug}</span>
+                        {plan.plan_mode === "byok" && (
+                          <span style={{ fontSize: 10, background: "rgba(99,102,241,0.15)", color: "#c4b5fd", border: "1px solid rgba(99,102,241,0.25)", padding: "1px 7px", borderRadius: 999, fontWeight: 700 }}>BYOK</span>
+                        )}
+                      </div>
                     </div>
                     <div style={{ textAlign: "left" }}>
                       <div style={{ fontSize: 20, fontWeight: 900, color: "#fff" }}>${plan.price_monthly}<span style={{ fontSize: 12, color: MUTED }}>/mo</span></div>
@@ -1470,6 +1419,17 @@ export default function Admin() {
                         />
                       </div>
                     ))}
+                    <div style={{ gridColumn: "span 2" }}>
+                      <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6, fontWeight: 600 }}>Plan Mode</label>
+                      <select
+                        value={editingPlan.plan_mode}
+                        onChange={e => setEditingPlan(prev => prev ? { ...prev, plan_mode: e.target.value as "platform" | "byok" } : null)}
+                        style={{ ...inputStyle, fontSize: 13, cursor: "pointer" }}
+                      >
+                        <option value="platform">Platform (System Key)</option>
+                        <option value="byok">BYOK (User Key)</option>
+                      </select>
+                    </div>
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 16 }}>
                     {[
@@ -1816,7 +1776,7 @@ export default function Admin() {
                             border: "1px solid rgba(239,68,68,0.25)",
                           }}>🚫 Reject</button>
                           <button onClick={() => {
-                            const res = fetch(`/api/admin/templates/${t.id}`, { method: "DELETE", headers: authHeaders() });
+                            const res = fetch(`/api/admin/templates/${t.id}`, { method: "DELETE", headers: authHeaders });
                             res.then(r => { if (r.ok) { setPendingTmpls(p => p.filter(x => x.id !== t.id)); setApprovalMsg({ type: "ok", text: "🗑️ Template deleted" }); } });
                           }} style={{
                             padding: "8px 10px", borderRadius: 8,

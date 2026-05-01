@@ -146,7 +146,7 @@ function Router() {
       <Route path="/telegram"><ProtectedRoute component={TelegramBot} /></Route>
       <Route path="/subscription"><ProtectedRoute component={Subscription} /></Route>
       <Route path="/template-builder"><ProtectedRoute component={TemplateBuilder} /></Route>
-      <Route path="/admin"><Redirect to="/blog-admin" /></Route>
+      <Route path="/admin"><ProtectedRoute component={Admin} /></Route>
 
       <Route path="/sites/:id/agents" component={SiteDetailPageWrapper} />
       <Route path="/sites/:id" component={SiteDetailPageWrapper} />
@@ -155,7 +155,7 @@ function Router() {
       <Route path="/pipeline"><ProtectedRoute component={PipelinePage} /></Route>
       <Route path="/logs"><ProtectedRoute component={LogsPage} /></Route>
       <Route path="/billing"><ProtectedRoute component={Billing} /></Route>
-      <Route path="/blog-admin"><ProtectedRoute component={BlogAdmin} /></Route>
+      <Route path="/blog-admin"><ProtectedRoute component={Admin} /></Route>
       <Route path="/rss-feeds"><ProtectedRoute component={RssFeedsPage} /></Route>
       <Route path="/blog-admin/tickets"><ProtectedRoute component={AdminTickets} /></Route>
       <Route path="/points"><ProtectedRoute component={PointsPage} /></Route>

@@ -1,6 +1,6 @@
 FROM node:24-alpine AS base
 RUN apk add --no-cache python3 make g++ cairo-dev pango-dev jpeg-dev giflib-dev librsvg-dev
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9.15.0
 
 WORKDIR /app
 

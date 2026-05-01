@@ -206,40 +206,6 @@ export async function processArticle(
   const [article] = await db.select().from(articlesTable).where(eq(articlesTable.id, articleId));
   if (!article) return;
 
-  // ── NEW: Quota & Points Enforcement ──
-  // Check if user has already paid for this article (e.g. if it was previously failed but credit was already taken)
-  // For simplicity, we check and consume only if it's currently in 'pending' content_status
-  if (article.content_status === "pending") {
-    const consumption = await consumeArticleCredit(article.user_id, article.id);
-    if (!consumption.success) {
-      await updateArticle(articleId, {
-        content_status: "failed",
-        error_message: consumption.error || "Quota exceeded",
-      });
-      await logStage(articleId, "quota_check", "failed", consumption.error);
-      return;
-    }
-    console.log(`[pipeline] article=${articleId} consumed via ${consumption.consumedType}`);
-    await logStage(articleId, "quota_check", "success", `Consumed via ${consumption.consumedType}`);
-  }
-
-
-  const [site] = article.site_id
-    ? await db.select().from(sitesTable).where(eq(sitesTable.id, article.site_id))
-    : [null];
-
-  const wpUrl = site?.wp_url ?? settings.wp_url ?? "";
-  const wpUser = site?.wp_username ?? settings.wp_username ?? "";
-  const wpPass = site?.wp_password ?? settings.wp_password ?? "";
-  const autoPublish = site?.auto_publish ?? settings.auto_publish === "true";
-
-  const perplexityKey = settings.perplexity_api_key ?? "";
-  const tavilyKey = settings.tavily_api_key ?? "";
-  const geminiKey = settings.gemini_api_key ?? "";
-  const kieaiKey = settings.kieai_api_key ?? "";
-  const kieaiModel = settings.kieai_model ?? "flux-dev";
-  const kieaiAspect = settings.kieai_aspect_ratio ?? "16:9";
-
   // ── BYOK: Resolve provider key based on user's plan mode ──
   let byokOverride: { provider: string; key: string } | undefined;
   let providerKeySource: KeySource = "platform";
@@ -257,6 +223,37 @@ export async function processArticle(
     const code = (err instanceof BYOKKeyMissingError || err instanceof BYOKKeyInvalidError) ? err.code : "AI_CONFIG_ERROR";
     await logStage(articleId, "byok_check", "failed", `${code}: ${msg}`);
     return;
+  }
+
+  const [site] = article.site_id
+    ? await db.select().from(sitesTable).where(eq(sitesTable.id, article.site_id))
+    : [null];
+
+  const wpUrl = site?.wp_url ?? settings.wp_url ?? "";
+  const wpUser = site?.wp_username ?? settings.wp_username ?? "";
+  const wpPass = site?.wp_password ?? settings.wp_password ?? "";
+  const autoPublish = site?.auto_publish ?? settings.auto_publish === "true";
+
+  const perplexityKey = settings.perplexity_api_key ?? "";
+  const tavilyKey = settings.tavily_api_key ?? "";
+  const geminiKey = settings.gemini_api_key ?? "";
+  const kieaiKey = settings.kieai_api_key ?? "";
+  const kieaiModel = settings.kieai_model ?? "flux-dev";
+  const kieaiAspect = settings.kieai_aspect_ratio ?? "16:9";
+
+  // ── NEW: Quota & Points Enforcement ──
+  if (article.content_status === "pending") {
+    const consumption = await consumeArticleCredit(article.user_id, article.id, providerKeySource);
+    if (!consumption.success) {
+      await updateArticle(articleId, {
+        content_status: "failed",
+        error_message: consumption.error || "Quota exceeded",
+      });
+      await logStage(articleId, "quota_check", "failed", consumption.error);
+      return;
+    }
+    console.log(`[pipeline] article=${articleId} consumed via ${consumption.consumedType} (keySource=${providerKeySource})`);
+    await logStage(articleId, "quota_check", "success", `Consumed via ${consumption.consumedType}`);
   }
 
   // AI callers resolved per role

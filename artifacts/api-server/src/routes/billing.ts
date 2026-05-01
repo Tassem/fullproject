@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { subscriptionsTable, plansTable, usersTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { subscriptionsTable, plansTable, usersTable, userProviderKeysTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { getEffectiveLimits } from "../lib/planGuard";
 
@@ -23,6 +23,12 @@ router.get("/status", requireAuth, async (req, res) => {
 
   const pct = (used: number, max: number) => (max === 0 ? 0 : Math.round((used / max) * 100));
 
+  const [keyRecord] = await db
+    .select({ id: userProviderKeysTable.id })
+    .from(userProviderKeysTable)
+    .where(and(eq(userProviderKeysTable.userId, user.id), eq(userProviderKeysTable.provider, "openrouter")))
+    .limit(1);
+
   return res.json({
     plan: plan ? {
       id: plan.id,
@@ -41,7 +47,9 @@ router.get("/status", requireAuth, async (req, res) => {
       has_custom_watermark: plan.has_custom_watermark,
       has_ai_image_generation: plan.has_ai_image_generation,
       rate_limit_daily: plan.rate_limit_daily,
+      plan_mode: plan.plan_mode ?? "platform",
     } : null,
+    has_openrouter_key: !!keyRecord,
     // effective = plan + addons merged — use this for UI display and enforcement
     effective: {
       max_sites: effectiveMaxSites,

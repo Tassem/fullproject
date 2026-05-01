@@ -33,6 +33,7 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       FROM_EMAIL: ${FROM_EMAIL:-noreply@mediaflow.com}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost}
+      CORS_ORIGINS: http://localhost,http://localhost:80,http://localhost:8087
     ports:
       - "8087:8080"
     depends_on:

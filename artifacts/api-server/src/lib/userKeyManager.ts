@@ -8,7 +8,7 @@
 import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
-const IV_LENGTH = 16;
+const IV_LENGTH = 12;
 
 function getEncryptionKey(): Buffer {
   const hex = process.env.BYOK_ENCRYPTION_KEY;

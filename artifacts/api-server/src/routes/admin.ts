@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { usersTable, plansTable, generatedImagesTable, articlesTable, sitesTable, systemSettingsTable, templatesTable, creditTransactionsTable, paymentRequestsTable, planAddonsTable, userAddonsTable } from "@workspace/db";
+import { usersTable, plansTable, generatedImagesTable, articlesTable, sitesTable, systemSettingsTable, templatesTable, creditTransactionsTable, paymentRequestsTable, planAddonsTable, userAddonsTable, userProviderKeysTable } from "@workspace/db";
 import { eq, count, isNull, and, desc, sql } from "drizzle-orm";
 import { requireAdmin } from "../lib/auth";
 import { invalidateEffectiveLimitsCache } from "../lib/planGuard";
@@ -148,14 +148,25 @@ router.get("/users", requireAdmin, async (req, res) => {
     const [articlesRow] = await db.select({ count: count() }).from(articlesTable)
       .where(eq(articlesTable.user_id, u.id));
     const [sitesRow] = await db.select({ count: count() }).from(sitesTable).where(eq(sitesTable.user_id, u.id));
-    return formatUser(u, {
+    const [keyRow] = await db.select({ id: userProviderKeysTable.id, isValid: userProviderKeysTable.isValid })
+      .from(userProviderKeysTable)
+      .where(and(eq(userProviderKeysTable.userId, u.id), eq(userProviderKeysTable.provider, "openrouter")))
+      .limit(1);
+
+    const f = formatUser(u, {
       articles_used: Number(articlesRow?.count ?? 0),
       sites_used: Number(sitesRow?.count ?? 0),
     });
+    return {
+      ...f,
+      has_openrouter_key: !!keyRow,
+      openrouter_key_valid: keyRow?.isValid ?? false,
+    };
   }));
   return res.json({ users: formatted, total, page, limit, pages: Math.ceil(total / limit) });
 });
 
+// PATCH /admin/users/:id
 // PATCH /admin/users/:id
 router.patch("/users/:id", requireAdmin, async (req, res) => {
   const id = parseInt(req.params.id as string);
@@ -188,6 +199,25 @@ router.patch("/users/:id", requireAdmin, async (req, res) => {
   }
 
   return res.json(formatUser(updated, { articles_used: 0, sites_used: 0 }));
+});
+
+// GET /admin/users/:id/key-status
+router.get("/users/:id/key-status", requireAdmin, async (req, res) => {
+  const userId = parseInt(req.params.id as string);
+  const [keyRow] = await db.select().from(userProviderKeysTable)
+    .where(and(eq(userProviderKeysTable.userId, userId), eq(userProviderKeysTable.provider, "openrouter")))
+    .limit(1);
+
+  if (!keyRow) {
+    return res.json({ hasKey: false, isValid: false, hint: null, lastValidated: null });
+  }
+
+  return res.json({
+    hasKey: true,
+    isValid: keyRow.isValid,
+    hint: keyRow.keyHint,
+    lastValidated: keyRow.lastValidatedAt,
+  });
 });
 
 // POST /admin/users/:id/grant-points
@@ -298,6 +328,7 @@ router.post("/plans", requireAdmin, async (req, res) => {
     sort_order: body.sort_order ?? 0,
     is_active: body.is_active !== false,
     is_free: body.is_free ?? false,
+    plan_mode: body.plan_mode ?? "platform",
   }).returning();
 
   return res.status(201).json(formatPlan(plan));
@@ -316,6 +347,7 @@ router.put("/plans/:id", requireAdmin, async (req, res) => {
     "has_blog_automation","has_image_generator","has_ai_image_generation","has_telegram_bot","has_api_access",
     "has_overlay_upload","has_custom_watermark","has_priority_processing","has_priority_support",
     "rate_limit_daily","rate_limit_hourly","price_monthly","price_yearly","sort_order","is_active","is_free",
+    "plan_mode",
   ] as const;
 
   for (const f of fields) {

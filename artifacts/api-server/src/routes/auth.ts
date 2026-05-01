@@ -397,15 +397,17 @@ router.get("/me", requireAuth, async (req, res) => {
   const plan = await getPlan(user.plan);
   // Check if user has an OpenRouter key configured
   const [keyRecord] = await db
-    .select({ id: userProviderKeysTable.id, isValid: userProviderKeysTable.isValid })
+    .select()
     .from(userProviderKeysTable)
     .where(and(eq(userProviderKeysTable.userId, user.id), eq(userProviderKeysTable.provider, "openrouter")))
     .limit(1);
+
   const userData = formatUser(user, plan);
   return res.json({
     ...userData,
     has_openrouter_key: !!keyRecord,
     openrouter_key_valid: keyRecord?.isValid ?? false,
+    openrouter_key_hint: keyRecord?.keyHint ?? null,
   });
 });
 

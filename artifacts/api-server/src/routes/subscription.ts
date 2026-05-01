@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { plansTable, usersTable, sitesTable, templatesTable, savedDesignsTable } from "@workspace/db";
+import { plansTable, usersTable, sitesTable, templatesTable, savedDesignsTable, userProviderKeysTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 
@@ -35,9 +35,17 @@ router.get("/", requireAuth, async (req, res) => {
     ? Math.max(0, (plan.monthly_credits ?? 0) - (user.monthly_credits ?? 0))
     : 0;
 
+  const [keyRecord] = await db
+    .select({ id: userProviderKeysTable.id })
+    .from(userProviderKeysTable)
+    .where(and(eq(userProviderKeysTable.userId, user.id), eq(userProviderKeysTable.provider, "openrouter")))
+    .limit(1);
+
   return res.json({
     currentPlan: user.plan,
     plan: plan ?? null,
+    plan_mode: plan?.plan_mode ?? "platform",
+    has_openrouter_key: !!keyRecord,
     usage: {
       // Sites
       sites_used:    sitesUsed,

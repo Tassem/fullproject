@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { UpgradeModal } from "@/components/SaaS/UpgradeModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { OpenRouterKeyModal } from "@/components/OpenRouterKeyModal";
+import { useAuth } from "@/contexts/auth";
 
 const AUTH = () => ({ Authorization: `Bearer ${localStorage.getItem("pro_token")}` });
 
@@ -26,7 +28,9 @@ interface BillingStatus {
     has_image_generator: boolean; has_api_access: boolean;
     has_overlay_upload: boolean; has_custom_watermark: boolean;
     has_ai_image_generation: boolean;
+    plan_mode: "platform" | "byok";
   } | null;
+  has_openrouter_key: boolean;
   /** effective = plan + addons merged — use this for UI display */
   effective: {
     max_sites: number; max_templates: number | null;
@@ -374,6 +378,8 @@ export function Billing() {
   const [showHistory, setShowHistory]           = useState(false);
   const [addonModalOpen, setAddonModalOpen]     = useState(false);
   const [selectedAddon, setSelectedAddon]       = useState<PlanAddon | null>(null);
+  const [keyModalOpen, setKeyModalOpen]         = useState(false);
+  const { user: authUser } = useAuth();
 
   const { data: billing, isLoading: billingLoading } = useQuery<BillingStatus>({
     queryKey: ["billing", "status"],
@@ -499,6 +505,47 @@ export function Billing() {
           <p className="text-sm text-zinc-500">Manage your subscription and usage</p>
         </div>
       </div>
+
+      {/* BYOK Key Management — Only for BYOK plans */}
+      {billing?.plan?.plan_mode === "byok" && (
+        <div className="animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="rounded-2xl border border-orange-500/20 bg-gradient-to-br from-orange-500/[0.07] to-transparent p-6 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-5">
+              <div className="w-14 h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shrink-0">
+                <Key className="w-7 h-7 text-orange-500" />
+              </div>
+              <div>
+                <h2 className="text-xl font-black text-white tracking-tight">OpenRouter API Configuration</h2>
+                <p className="text-sm text-zinc-400 mt-1 max-w-md">
+                  Your current plan requires you to provide your own API key. 
+                  {!billing.has_openrouter_key && <span className="text-orange-400 font-bold ml-1">Key is missing! generation will fail.</span>}
+                </p>
+                {billing.has_openrouter_key && (
+                  <div className="flex items-center gap-2 mt-3">
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
+                      <ShieldCheck className="w-3 h-3" /> Key Configured
+                    </div>
+                    {authUser?.openrouter_key_hint && (
+                      <span className="text-[10px] text-zinc-500 font-mono font-bold">Hint: ...{authUser.openrouter_key_hint}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button 
+              onClick={() => setKeyModalOpen(true)}
+              className={cn(
+                "h-12 px-8 rounded-xl font-black uppercase tracking-widest transition-all",
+                billing.has_openrouter_key 
+                  ? "bg-white/5 hover:bg-white/10 text-white border border-white/10" 
+                  : "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(234,88,12,0.3)]"
+              )}
+            >
+              {billing.has_openrouter_key ? "Update API Key" : "Configure API Key"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Current Plan + Points Wallet */}
       {billing && (
@@ -1070,7 +1117,6 @@ export function Billing() {
         />
       )}
 
-      {/* Upgrade Modal */}
       {selectedPlan && (
         <UpgradeModal
           open={upgradeModalOpen}
@@ -1086,6 +1132,13 @@ export function Billing() {
           lastRejected={myRequests.find(r => r.planId === selectedPlan.id && r.status === "rejected") ?? null}
         />
       )}
+
+      <OpenRouterKeyModal
+        open={keyModalOpen}
+        onClose={() => setKeyModalOpen(false)}
+        onSuccess={() => qc.invalidateQueries({ queryKey: ["billing", "status"] })}
+        currentHint={authUser?.openrouter_key_hint}
+      />
     </div>
   );
 }
