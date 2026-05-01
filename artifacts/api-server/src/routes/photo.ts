@@ -10,7 +10,7 @@ import { usersTable } from "@workspace/db";
 
 const router = Router();
 
-const uploadsDir = path.join(process.cwd(), "uploads");
+const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }

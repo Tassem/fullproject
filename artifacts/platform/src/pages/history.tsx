@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useListHistory, getListHistoryQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,101 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { Download, Image as ImageIcon } from "lucide-react";
 
+// Helper Hook for Authenticated Images
+const useAuthenticatedImage = (url: string) => {
+  const [src, setSrc] = useState<string>("");
+  
+  useEffect(() => {
+    if (!url) return;
+    const token = localStorage.getItem("pro_token");
+    
+    let objectUrl = "";
+    if (url.startsWith("/api/photo")) {
+      fetch(url, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to load");
+        return res.blob();
+      })
+      .then(blob => {
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      })
+      .catch(() => setSrc(""));
+    } else {
+      setSrc(url);
+    }
+    
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+  
+  return src;
+};
+
+const CardItem = ({ img }: { img: any }) => {
+  const imgSrc = useAuthenticatedImage(img.imageUrl);
+
+  const handleDownload = async (imageUrl: string, filename?: string) => {
+    try {
+      const token = localStorage.getItem("pro_token");
+      const response = await fetch(imageUrl, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("Download failed");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "card.png";
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      console.error("Download error:", err);
+    }
+  };
+
+  return (
+    <Card key={img.id} className="overflow-hidden flex flex-col group">
+      <div className="relative aspect-square bg-muted border-b overflow-hidden group-hover:opacity-90 transition-opacity">
+        <img 
+          src={imgSrc} 
+          alt={img.title} 
+          className="w-full h-full object-cover object-top"
+          loading="lazy"
+        />
+        <div className="absolute top-2 right-2">
+          <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm shadow-sm" dir="ltr">
+            {img.aspectRatio}
+          </Badge>
+        </div>
+      </div>
+      <CardContent className="p-4 flex-1">
+        <p className="text-sm font-medium line-clamp-2 leading-snug" title={img.title}>
+          {img.title}
+        </p>
+        <p className="text-xs text-muted-foreground mt-2" dir="ltr">
+          {format(new Date(img.createdAt), "dd MMM yyyy, HH:mm")}
+        </p>
+      </CardContent>
+      <CardFooter className="p-4 pt-0 gap-2">
+        <Button 
+          variant="default" 
+          size="sm" 
+          className="flex-1"
+          onClick={() => handleDownload(img.imageUrl, `${img.title}.png`)}
+        >
+          <Download className="mr-2 h-4 w-4" />
+          Download
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+};
 export default function History() {
   const [page, setPage] = useState(0);
   const limit = 20;
@@ -65,40 +160,7 @@ export default function History() {
         <>
           <div className="grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {images.map((img) => (
-              <Card key={img.id} className="overflow-hidden flex flex-col group">
-                <div className="relative aspect-square bg-muted border-b overflow-hidden group-hover:opacity-90 transition-opacity">
-                  <img 
-                    src={img.imageUrl} 
-                    alt={img.title} 
-                    className="w-full h-full object-cover object-top"
-                    loading="lazy"
-                  />
-                  <div className="absolute top-2 right-2">
-                    <Badge variant="secondary" className="bg-background/80 backdrop-blur-sm shadow-sm" dir="ltr">
-                      {img.aspectRatio}
-                    </Badge>
-                  </div>
-                </div>
-                <CardContent className="p-4 flex-1">
-                  <p className="text-sm font-medium line-clamp-2 leading-snug" title={img.title}>
-                    {img.title}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-2" dir="ltr">
-                    {format(new Date(img.createdAt), "dd MMM yyyy, HH:mm")}
-                  </p>
-                </CardContent>
-                <CardFooter className="p-4 pt-0 gap-2">
-                  <Button 
-                    variant="default" 
-                    size="sm" 
-                    className="flex-1"
-                    onClick={() => window.open(img.imageUrl, '_blank')}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download
-                  </Button>
-                </CardFooter>
-              </Card>
+              <CardItem key={img.id} img={img} />
             ))}
           </div>
 

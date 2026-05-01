@@ -23,7 +23,7 @@ import dns from "dns/promises";
 
 const router = Router();
 
-const uploadsDir = path.join(process.cwd(), "uploads");
+const uploadsDir = process.env.UPLOADS_DIR || path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const BLOCKED_IP_PATTERNS = [

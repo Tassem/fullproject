@@ -22,6 +22,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     environment:
+      UPLOADS_DIR: /app/uploads
       NODE_ENV: production
       PORT: 8080
       DATABASE_URL: postgresql://${PGUSER:-mediaflow}:${PGPASSWORD:?Set PGPASSWORD in .env}@db:5432/${PGDATABASE:-mediaflow}
