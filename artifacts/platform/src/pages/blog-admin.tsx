@@ -13,6 +13,8 @@ import {
   Sparkles, Package, ChevronDown, Loader2
 } from "lucide-react";
 
+import AdminTickets from "./admin-tickets";
+
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -47,7 +49,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 
-type Tab = "overview" | "users" | "payments" | "plans" | "points" | "addons" | "images" | "templates" | "bot" | "channels" | "system";
+type Tab = "overview" | "users" | "payments" | "plans" | "points" | "addons" | "images" | "templates" | "bot" | "channels" | "system" | "tickets";
 
 const TABS: { id: Tab; label: string; labelAr: string; icon: React.ElementType; color: string; bg: string }[] = [
   { id: "overview",   label: "Overview",   labelAr: "Overview",   icon: LayoutDashboard, color: "#38bdf8", bg: "rgba(56,189,248,0.12)"   },
@@ -61,6 +63,7 @@ const TABS: { id: Tab; label: string; labelAr: string; icon: React.ElementType; 
   { id: "channels",   label: "Channels",   labelAr: "Channels",     icon: Rss,             color: "#4ade80", bg: "rgba(74,222,128,0.12)"   },
   { id: "bot",        label: "Bot",        labelAr: "Bot",       icon: Bot,             color: "#818cf8", bg: "rgba(129,140,248,0.12)"  },
   { id: "system",     label: "System",     labelAr: "System",      icon: Settings,        color: "#94a3b8", bg: "rgba(148,163,184,0.12)"  },
+  { id: "tickets",    label: "Tickets",    labelAr: "Tickets",     icon: MessageCircle,   color: "#f87171", bg: "rgba(248,113,113,0.12)"  },
 ];
 
 // ─── useAdminSettings hook ───────────────────────────────────────────────────
@@ -704,6 +707,7 @@ const EMPTY_PLAN = {
   has_overlay_upload: false, has_custom_watermark: false,
   has_priority_support: false, has_priority_processing: false,
   is_free: false, sort_order: 0, is_active: true,
+  plan_mode: "platform",
 };
 
 function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
@@ -746,6 +750,18 @@ function PlanFormFields({ plan, onChange }: { plan: any; onChange: (p: any) => v
             <Label className="text-[10px] font-black uppercase text-zinc-500">Description</Label>
             <Input value={plan.description ?? ""} onChange={e => str("description", e.target.value)}
               placeholder="Best for professionals" className="bg-black border-white/10 h-10 rounded-xl text-sm" />
+          </div>
+          <div className="col-span-2 space-y-1">
+            <Label className="text-[10px] font-black uppercase text-zinc-500">Plan Mode</Label>
+            <Select value={plan.plan_mode || "platform"} onValueChange={v => str("plan_mode", v)}>
+              <SelectTrigger className="bg-black border-white/10 h-10 rounded-xl text-sm">
+                <SelectValue placeholder="Select mode" />
+              </SelectTrigger>
+              <SelectContent className="bg-zinc-950 border-white/10">
+                <SelectItem value="platform">Platform AI</SelectItem>
+                <SelectItem value="byok">Bring Your Own Key (BYOK)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
@@ -3644,6 +3660,7 @@ export function BlogAdmin() {
           {activeTab === "channels"   && <ChannelsTab />}
           {activeTab === "bot"        && <BotTab />}
           {activeTab === "system"     && <SystemTab />}
+          {activeTab === "tickets"    && <AdminTickets />}
         </div>
       </div>
     </div>

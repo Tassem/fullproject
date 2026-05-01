@@ -41,7 +41,7 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - api_uploads:/app/artifacts/api-server/uploads
+      - api_uploads:/app/uploads
 
   platform:
     build:

@@ -24,8 +24,8 @@ function detectExt(buf: Buffer): string {
   return "png";
 }
 
-async function generateImageViaRouter(prompt: string, aspectRatio: string): Promise<string> {
-  const result = await generateImage(prompt, { ratio: aspectRatio, count: 1 });
+async function generateImageViaRouter(prompt: string, aspectRatio: string, userId?: number): Promise<string> {
+  const result = await generateImage(prompt, { ratio: aspectRatio, count: 1, userId });
   
   if (!result.success) {
     throw new Error(result.error || "Generation failed");
@@ -72,20 +72,20 @@ router.post("/generate", requireAuth, async (req, res) => {
 
   try {
     if (mode === "prompt") {
-      const resPrompt = await buildPromptFromCustomPrompt(customPrompt, false, style);
+      const resPrompt = await buildPromptFromCustomPrompt(customPrompt, false, style, user.id);
       prompt = resPrompt.finalPrompt;
     } else if (mode === "image") {
       try {
-        const resImg = await buildPromptFromImageAnalysis(imageUrl, style);
+        const resImg = await buildPromptFromImageAnalysis(imageUrl, style, user.id);
         prompt = resImg.finalPrompt;
         generationMethod = "image_analysis";
       } catch (err) {
         if (!titleText || titleText.length < 3) throw err;
-        prompt = (await buildPromptFromTitle(titleText, style)).finalPrompt;
+        prompt = (await buildPromptFromTitle(titleText, style, user.id)).finalPrompt;
         generationMethod = "headline_fallback";
       }
     } else {
-      const resTitle = await buildPromptFromTitle(titleText, style);
+      const resTitle = await buildPromptFromTitle(titleText, style, user.id);
       prompt = resTitle.finalPrompt;
       generationMethod = "headline";
     }
@@ -100,7 +100,7 @@ router.post("/generate", requireAuth, async (req, res) => {
       finalAttempt = attempt;
       try {
         console.log(`🔄 Generation attempt ${attempt}/${maxAttempts}`);
-        finalImageUrl = await generateImageViaRouter(prompt, aspectRatio);
+        finalImageUrl = await generateImageViaRouter(prompt, aspectRatio, user.id);
         if (finalImageUrl) break;
       } catch (err: any) {
         lastErr = err;
@@ -160,6 +160,14 @@ router.post("/generate", requireAuth, async (req, res) => {
     let errorType = "unknown";
     let userMsg = "Something went wrong. Please try again. No credits were deducted.";
     
+    if (err.code === "BYOK_KEY_MISSING" || err.message?.includes("BYOK_KEY_MISSING")) {
+      return res.status(422).json({
+        success: false,
+        errorType: "byok_key_missing",
+        message: "يرجى إضافة مفتاح OpenRouter الخاص بك في صفحة الاشتراك للمتابعة."
+      });
+    }
+
     if (err.message) {
       const msgLower = err.message.toLowerCase();
       if (msgLower.includes("aborted") || msgLower.includes("timeout")) {

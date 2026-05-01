@@ -59,8 +59,9 @@ export function ByokBanner() {
       </div>
 
       <OpenRouterKeyModal 
-        isOpen={modalOpen} 
+        open={modalOpen} 
         onClose={() => setModalOpen(false)} 
+        onSuccess={() => setModalOpen(false)}
       />
     </>
   );

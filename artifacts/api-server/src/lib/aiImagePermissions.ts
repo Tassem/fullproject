@@ -1,4 +1,4 @@
-import { db, usersTable, creditTransactionsTable, systemSettingsTable } from "@workspace/db";
+import { db, usersTable, creditTransactionsTable, systemSettingsTable, plansTable } from "@workspace/db";
 import { eq, sql } from "drizzle-orm";
 import { getEffectiveLimits } from "./planGuard";
 import type { KeySource } from "./providerKeyResolver";
@@ -21,15 +21,24 @@ export async function checkAiImagePermission(userId: number): Promise<{
     };
   }
 
-  // 2. Check Credits
-  const [user] = await db.select({
-    total_credits: sql<number>`COALESCE(${usersTable.monthly_credits}, 0) + COALESCE(${usersTable.purchased_credits}, 0)`
-  }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  // 2. Check Plan Mode & Credits
+  const [userPlan] = await db
+    .select({
+      id: usersTable.id,
+      plan_mode: plansTable.plan_mode,
+      total_credits: sql<number>`COALESCE(${usersTable.monthly_credits}, 0) + COALESCE(${usersTable.purchased_credits}, 0)`
+    })
+    .from(usersTable)
+    .leftJoin(plansTable, eq(usersTable.plan, plansTable.slug))
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (!userPlan) return { allowed: false, reason: "User not found", errorType: "feature_disabled" };
 
   const [settings] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "ai_image_cost_per_generation")).limit(1);
   const costPerGen = parseInt(settings?.value || "2", 10);
 
-  if (!user || user.total_credits < costPerGen) {
+  if (userPlan.total_credits < costPerGen) {
     return {
       allowed: false,
       reason: `رصيدك غير كافٍ. تكلفة التوليد هي ${costPerGen} نقطة.`,
@@ -51,6 +60,15 @@ export async function deductAiImageCredits(
   providerKeySource: KeySource = "platform"
 ): Promise<{ success: boolean; creditsDeducted: number; transactionId: string; error?: string }> {
   try {
+    const [userPlan] = await db
+      .select({ plan_mode: plansTable.plan_mode })
+      .from(usersTable)
+      .leftJoin(plansTable, eq(usersTable.plan, plansTable.slug))
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+
+    const isByok = userPlan?.plan_mode === "byok";
+    
     const [settings] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.key, "ai_image_cost_per_generation")).limit(1);
     const costPerGen = parseInt(settings?.value || "2", 10);
     const totalCost = costPerGen * count;
@@ -87,9 +105,9 @@ export async function deductAiImageCredits(
         userId,
         type: "image_generator",
         amount: -totalCost,
-        description: `توليد ${count} صورة AI: ${promptSnippet?.slice(0, 50) || "بدون عنوان"}...`,
+        description: `توليد ${count} صورة AI ${isByok ? "(BYOK)" : ""}: ${promptSnippet?.slice(0, 50) || "بدون عنوان"}...`,
         service,
-        providerKeySource,
+        providerKeySource: isByok ? "user" : providerKeySource,
       }).returning({ id: creditTransactionsTable.id });
 
       return { success: true, creditsDeducted: totalCost, transactionId: String(inserted.id) };

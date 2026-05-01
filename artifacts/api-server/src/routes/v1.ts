@@ -162,7 +162,7 @@ router.post("/generate-card", requireApiKey, async (req, res) => {
   
   if (aiPrompt) {
     try {
-      const resPrompt = await buildPromptFromCustomPrompt(aiPrompt, false, aiStyle);
+      const resPrompt = await buildPromptFromCustomPrompt(aiPrompt, false, aiStyle, user.id);
       const prompt = resPrompt.finalPrompt;
       
       const port = process.env.PORT || 3001;

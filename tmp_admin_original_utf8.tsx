@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 
 type PlanSlug = "free" | "starter" | "pro" | "business";
 interface AdminUser {
@@ -28,7 +28,7 @@ interface AdminPlan {
   is_active: boolean; is_free: boolean; sort_order: number;
 }
 
-// ─── Design tokens ──────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Design tokens ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const BG        = "#05050a";
 const SIDEBAR   = "#0e0e1c";
 const TOPBAR    = "#0a0a16";
@@ -45,7 +45,7 @@ const RED       = "#ef4444";
 const AMBER     = "#f59e0b";
 const SIDEBAR_W = 240;
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const PLAN_STYLE: Record<string, { bg: string; color: string; border: string; label: string }> = {
   free:    { bg: "rgba(148,163,184,0.1)", color: "#94a3b8", border: "rgba(148,163,184,0.2)", label: "Free" },
   starter: { bg: "rgba(96,165,250,0.1)",  color: "#60a5fa", border: "rgba(96,165,250,0.2)",  label: "Starter" },
@@ -101,7 +101,7 @@ const getSafeHost = (url: string) => {
   } catch { return "veoaifree.com"; }
 };
 
-// ─── Main ──────────────────────────────────────────────────────────────────
+// ΓöÇΓöÇΓöÇ Main ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 export default function Admin() {
   const [token, setToken]             = useState(() => localStorage.getItem("ncg_admin_token") || "");
   const [loginEmail, setLoginEmail]   = useState("");
@@ -123,7 +123,7 @@ export default function Admin() {
   const [newBotToken, setNewBotToken] = useState("");
   const [botLoading, setBotLoading]   = useState(false);
 
-  // ── WhatsApp state ──
+  // ΓöÇΓöÇ WhatsApp state ΓöÇΓöÇ
   type WAStatus = "disconnected" | "connecting" | "qr_ready" | "connected";
   const [waStatus, setWaStatus]         = useState<WAStatus>("disconnected");
   const [waQr, setWaQr]                 = useState<string | null>(null);
@@ -131,7 +131,7 @@ export default function Admin() {
   const [waLoading, setWaLoading]       = useState(false);
   const [waPollRef, setWaPollRef]       = useState<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Site Settings state ──
+  // ΓöÇΓöÇ Site Settings state ΓöÇΓöÇ
   interface GoogleSettings { hasClientId: boolean; clientIdMasked: string | null; source: string; }
   interface SmtpSettings { hasCredentials: boolean; host: string; port: number; user: string | null; passMasked: string | null; from: string | null; }
   const [googleSettings, setGoogleSettings] = useState<GoogleSettings | null>(null);
@@ -155,7 +155,7 @@ export default function Admin() {
 
 
 
-  // ── Homepage settings state ──
+  // ΓöÇΓöÇ Homepage settings state ΓöÇΓöÇ
   type HF = {
     siteName: string; siteLogo: string; defaultLang: string;
     heroBadge: string; heroHeadline: string; heroSubtitle: string;
@@ -184,7 +184,7 @@ export default function Admin() {
   const [homepageSaving, setHomepageSaving] = useState(false);
   const [homepageMsg, setHomepageMsg]     = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  // ── System Templates state ──
+  // ΓöÇΓöÇ System Templates state ΓöÇΓöÇ
   interface SysTmpl {
     id: number; name: string; category: string;
     bannerColor: string; bannerGradient: string | null;
@@ -204,12 +204,12 @@ export default function Admin() {
   const [editingTmpl, setEditingTmpl]       = useState<Partial<SysTmpl>>({});
   const [tmplMsg, setTmplMsg]               = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
-  // ── Pending user templates (awaiting admin approval) ──
+  // ΓöÇΓöÇ Pending user templates (awaiting admin approval) ΓöÇΓöÇ
   interface PendingTmpl { id: number; name: string; userId: number; category: string; bannerColor: string; bannerGradient: string | null; textColor: string; font: string; createdAt: string; }
   const [pendingTmpls, setPendingTmpls]     = useState<PendingTmpl[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
 
-  // ── Payment requests state ──
+  // ΓöÇΓöÇ Payment requests state ΓöÇΓöÇ
   interface PayReq {
     id: number; userId: number; type: string;
     planId: number | null; pointsAmount: number | null;
@@ -375,7 +375,7 @@ export default function Admin() {
         method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ ...homepageForm, ...planHrefs }),
       });
-      if (r.ok) setHomepageMsg({ type: "ok", text: "✅ Homepage settings saved successfully" });
+      if (r.ok) setHomepageMsg({ type: "ok", text: "Γ£à Homepage settings saved successfully" });
       else { const d = await r.json(); setHomepageMsg({ type: "err", text: d.error || "Save failed" }); }
     } catch { setHomepageMsg({ type: "err", text: "Connection error" }); }
     finally { setHomepageSaving(false); }
@@ -467,7 +467,7 @@ export default function Admin() {
     } finally { setBotLoading(false); }
   };
 
-  // ── WhatsApp handlers ─────────────────────────────────────────────────────
+  // ΓöÇΓöÇ WhatsApp handlers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const fetchWAStatus = async () => {
     try {
       const res = await fetch("/api/whatsapp/status", { headers: authHeaders() });
@@ -523,7 +523,7 @@ export default function Admin() {
     fetchWAStatus();
   };
 
-  // ── System Templates handlers ──────────────────────────────────────────────
+  // ΓöÇΓöÇ System Templates handlers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const loadSysTmpls = useCallback(async () => {
     setTmplLoading(true);
     try {
@@ -571,7 +571,7 @@ export default function Admin() {
       });
       const d = await r.json();
       if (r.ok) {
-        setPayMsg({ type: "ok", text: action === "approve" ? "✅ Request approved successfully" : "🚫 Request rejected" });
+        setPayMsg({ type: "ok", text: action === "approve" ? "Γ£à Request approved successfully" : "≡ƒÜ½ Request rejected" });
         loadPayReqs(payFilter);
       } else {
         setPayMsg({ type: "err", text: d.error ?? "Action failed" });
@@ -585,9 +585,9 @@ export default function Admin() {
     const res = await fetch(`/api/admin/templates/${id}/approve`, { method: "POST", headers: authHeaders() });
     if (res.ok) {
       setPendingTmpls(p => p.filter(t => t.id !== id));
-      setApprovalMsg({ type: "ok", text: "✅ Template approved and published in gallery" });
+      setApprovalMsg({ type: "ok", text: "Γ£à Template approved and published in gallery" });
     } else {
-      setApprovalMsg({ type: "err", text: "❌ Approval failed" });
+      setApprovalMsg({ type: "err", text: "Γ¥î Approval failed" });
     }
   };
 
@@ -596,9 +596,9 @@ export default function Admin() {
     const res = await fetch(`/api/admin/templates/${id}/reject`, { method: "POST", headers: authHeaders() });
     if (res.ok) {
       setPendingTmpls(p => p.filter(t => t.id !== id));
-      setApprovalMsg({ type: "ok", text: "🚫 Template rejected and hidden from gallery" });
+      setApprovalMsg({ type: "ok", text: "≡ƒÜ½ Template rejected and hidden from gallery" });
     } else {
-      setApprovalMsg({ type: "err", text: "❌ Rejection failed" });
+      setApprovalMsg({ type: "err", text: "Γ¥î Rejection failed" });
     }
   };
 
@@ -619,7 +619,7 @@ export default function Admin() {
           const saved = await saveRes.json();
           setSysTmpls(p => [saved, ...p]);
           setAiPromptText("");
-          setTmplMsg({ type: "ok", text: data.usedAI ? "✨ Template created with AI" : "⚡ Template created from keywords" });
+          setTmplMsg({ type: "ok", text: data.usedAI ? "Γ£¿ Template created with AI" : "ΓÜí Template created from keywords" });
         } else setTmplMsg({ type: "err", text: "Template save failed" });
       } else setTmplMsg({ type: "err", text: data.error || "Generation failed" });
     } catch { setTmplMsg({ type: "err", text: "Connection error" }); }
@@ -642,7 +642,7 @@ export default function Admin() {
         if (isNew) setSysTmpls(p => [data, ...p]);
         else setSysTmpls(p => p.map(t => t.id === data.id ? data : t));
         setShowTmplForm(false); setEditingTmpl({});
-        setTmplMsg({ type: "ok", text: isNew ? "✅ Template created successfully" : "✅ Template updated" });
+        setTmplMsg({ type: "ok", text: isNew ? "Γ£à Template created successfully" : "Γ£à Template updated" });
       } else setTmplMsg({ type: "err", text: data.error || "Save failed" });
     } finally { setTmplLoading(false); }
   };
@@ -665,7 +665,7 @@ export default function Admin() {
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // ── INPUT / BUTTON shared styles ──
+  // ΓöÇΓöÇ INPUT / BUTTON shared styles ΓöÇΓöÇ
   const inputStyle: React.CSSProperties = {
     width: "100%", background: "rgba(255,255,255,0.04)",
     border: `1px solid ${BORDER}`, borderRadius: 10,
@@ -674,7 +674,7 @@ export default function Admin() {
     transition: "border-color 0.2s",
   };
 
-  // ── LOGIN PAGE ────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ LOGIN PAGE ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (!token) {
     return (
       <div style={{
@@ -706,9 +706,9 @@ export default function Admin() {
               margin: "0 auto 16px",
               fontSize: 24, fontWeight: 900, color: "#fff",
               boxShadow: `0 0 30px rgba(99,102,241,0.4)`,
-            }}>🛡️</div>
+            }}>≡ƒ¢í∩╕Å</div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", margin: 0, marginBottom: 6 }}>Admin Panel</h1>
-            <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>News Card Pro — Admin Panel</p>
+            <p style={{ color: MUTED, fontSize: 13, margin: 0 }}>News Card Pro ΓÇö Admin Panel</p>
           </div>
 
           <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -753,7 +753,7 @@ export default function Admin() {
               transition: "all 0.2s",
               opacity: loginLoading ? 0.8 : 1,
             }}>
-              {loginLoading ? "⏳ Verifying..." : "Admin Sign In"}
+              {loginLoading ? "ΓÅ│ Verifying..." : "Admin Sign In"}
             </button>
           </form>
 
@@ -761,14 +761,14 @@ export default function Admin() {
             <a href="/pro/login" style={{ fontSize: 12, color: MUTED, textDecoration: "none" }}
               onMouseEnter={e => e.currentTarget.style.color = TEXT}
               onMouseLeave={e => e.currentTarget.style.color = MUTED}
-            >← Back to login</a>
+            >ΓåÉ Back to login</a>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── Settings handlers ────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Settings handlers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const handleSaveGoogle = async () => {
     if (!newGoogleId.trim()) return;
     setSettingsSaving("google"); setSettingsMsg(null);
@@ -780,7 +780,7 @@ export default function Admin() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       setNewGoogleId(""); await loadSettings();
-      setSettingsMsg({ key: "google", type: "ok", text: "✅ Google Client ID saved successfully" });
+      setSettingsMsg({ key: "google", type: "ok", text: "Γ£à Google Client ID saved successfully" });
     } catch (e: any) { setSettingsMsg({ key: "google", type: "err", text: e.message }); }
     finally { setSettingsSaving(null); }
   };
@@ -805,7 +805,7 @@ export default function Admin() {
         }),
       });
       if (res.ok) {
-        setSettingsMsg({ key: "ai", type: "ok", text: "✅ تم حفظ إعدادات النقاط بنجاح" });
+        setSettingsMsg({ key: "ai", type: "ok", text: "Γ£à ╪¬┘à ╪¡┘ü╪╕ ╪Ñ╪╣╪»╪º╪»╪º╪¬ ╪º┘ä┘å┘é╪º╪╖ ╪¿┘å╪¼╪º╪¡" });
         loadSettings(); // Refresh preview
       } else {
         setSettingsMsg({ key: "ai", type: "err", text: "Failed to update settings" });
@@ -822,7 +822,7 @@ export default function Admin() {
     try {
       await fetch("/api/settings/google", { method: "DELETE", headers: authHeaders() });
       await loadSettings();
-      setSettingsMsg({ key: "google", type: "ok", text: "✅ Google Client ID removed" });
+      setSettingsMsg({ key: "google", type: "ok", text: "Γ£à Google Client ID removed" });
     } catch { setSettingsMsg({ key: "google", type: "err", text: "An error occurred" }); }
     finally { setSettingsSaving(null); }
   };
@@ -837,7 +837,7 @@ export default function Admin() {
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       await loadSettings();
-      setSettingsMsg({ key: "smtp", type: "ok", text: "✅ Email settings saved successfully" });
+      setSettingsMsg({ key: "smtp", type: "ok", text: "Γ£à Email settings saved successfully" });
     } catch (e: any) { setSettingsMsg({ key: "smtp", type: "err", text: e.message }); }
     finally { setSettingsSaving(null); }
   };
@@ -848,7 +848,7 @@ export default function Admin() {
       await fetch("/api/settings/smtp", { method: "DELETE", headers: authHeaders() });
       setSmtpForm({ host: "", port: "587", user: "", pass: "", from: "" });
       await loadSettings();
-      setSettingsMsg({ key: "smtp", type: "ok", text: "✅ Email settings removed" });
+      setSettingsMsg({ key: "smtp", type: "ok", text: "Γ£à Email settings removed" });
     } catch { setSettingsMsg({ key: "smtp", type: "err", text: "An error occurred" }); }
     finally { setSettingsSaving(null); }
   };
@@ -862,7 +862,7 @@ export default function Admin() {
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
-      setSettingsMsg({ key: "smtp-test", type: "ok", text: `✅ Test email sent to ${testEmailTo || "sender"}` });
+      setSettingsMsg({ key: "smtp-test", type: "ok", text: `Γ£à Test email sent to ${testEmailTo || "sender"}` });
     } catch (e: any) { setSettingsMsg({ key: "smtp-test", type: "err", text: e.message }); }
     finally { setSettingsSaving(null); }
   };
@@ -890,7 +890,7 @@ export default function Admin() {
         }),
       });
       if (res.ok) {
-        setSettingsMsg({ key: "provider", type: "ok", text: "✅ AI Provider settings saved successfully" });
+        setSettingsMsg({ key: "provider", type: "ok", text: "Γ£à AI Provider settings saved successfully" });
         loadSettings();
       } else throw new Error("Failed to save provider settings");
     } catch (e: any) { setSettingsMsg({ key: "provider", type: "err", text: e.message }); }
@@ -922,42 +922,42 @@ export default function Admin() {
         body: JSON.stringify({ apiKey: providerSettings.openai.apiKey })
       });
       const d = await r.json();
-      if (r.ok) alert("Connected ✅");
-      else alert(`Invalid Key ❌: ${d.error || ""}`);
-    } catch { alert("Connection failed ❌"); }
+      if (r.ok) alert("Connected Γ£à");
+      else alert(`Invalid Key Γ¥î: ${d.error || ""}`);
+    } catch { alert("Connection failed Γ¥î"); }
     finally { setOaTesting(false); }
   };
 
 
-  // ── NAV GROUPS ─────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ NAV GROUPS ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const NAV_GROUPS = [
     {
       label: "Overview",
       items: [
-        { id: "stats",     label: "Dashboard",  icon: "◈" },
+        { id: "stats",     label: "Dashboard",  icon: "Γùê" },
       ],
     },
     {
       label: "Content",
       items: [
-        { id: "users",     label: "Users",       icon: "◎" },
-        { id: "images",    label: "Images",            icon: "▣" },
-        { id: "templates", label: "Templates",          icon: "◻" },
+        { id: "users",     label: "Users",       icon: "ΓùÄ" },
+        { id: "images",    label: "Images",            icon: "Γûú" },
+        { id: "templates", label: "Templates",          icon: "Γù╗" },
       ],
     },
     {
       label: "Business",
       items: [
-        { id: "plans",     label: "Plans",          icon: "◆" },
-        { id: "payments",  label: "Payments",        icon: "💳" },
-        { id: "bot",       label: "Telegram Bot",    icon: "◉" },
-        { id: "whatsapp",  label: "WhatsApp Bot",       icon: "◈" },
+        { id: "plans",     label: "Plans",          icon: "Γùå" },
+        { id: "payments",  label: "Payments",        icon: "≡ƒÆ│" },
+        { id: "bot",       label: "Telegram Bot",    icon: "Γùë" },
+        { id: "whatsapp",  label: "WhatsApp Bot",       icon: "Γùê" },
       ],
     },
     {
       label: "System",
       items: [
-        { id: "settings",  label: "Settings",        icon: "◌" },
+        { id: "settings",  label: "Settings",        icon: "Γùî" },
       ],
     },
   ] as const;
@@ -968,8 +968,8 @@ export default function Admin() {
     whatsapp: "WhatsApp Bot", settings: "Settings", payments: "Payment Requests",
   };
   const TAB_ICONS: Record<string, string> = {
-    stats: "◈", users: "◎", images: "▣", templates: "◻", plans: "◆",
-    bot: "◉", whatsapp: "◈", settings: "◌", payments: "💳",
+    stats: "Γùê", users: "ΓùÄ", images: "Γûú", templates: "Γù╗", plans: "Γùå",
+    bot: "Γùë", whatsapp: "Γùê", settings: "Γùî", payments: "≡ƒÆ│",
   };
 
   const cardStyle: React.CSSProperties = {
@@ -978,11 +978,11 @@ export default function Admin() {
     backdropFilter: "blur(12px)",
   };
 
-  // ── DASHBOARD ─────────────────────────────────────────────────────────────
+  // ΓöÇΓöÇ DASHBOARD ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: BG, color: TEXT, fontFamily: "'Inter', sans-serif", direction: "ltr" }}>
 
-      {/* ═══ SIDEBAR ═══ */}
+      {/* ΓòÉΓòÉΓòÉ SIDEBAR ΓòÉΓòÉΓòÉ */}
       <aside style={{
         position: "fixed", top: 0, left: 0, bottom: 0,
         width: SIDEBAR_W,
@@ -1004,7 +1004,7 @@ export default function Admin() {
             background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 18, boxShadow: `0 0 18px rgba(99,102,241,0.4)`,
-          }}>🛡️</div>
+          }}>≡ƒ¢í∩╕Å</div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 800, color: "#fff", lineHeight: 1.2 }}>News Card Pro</div>
             <div style={{ fontSize: 10, color: "rgba(99,102,241,0.8)", fontWeight: 600, marginTop: 2 }}>Admin Panel</div>
@@ -1100,7 +1100,7 @@ export default function Admin() {
               border: `1px solid rgba(99,102,241,0.3)`,
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 14,
-            }}>👤</div>
+            }}>≡ƒæñ</div>
             <div>
               <div style={{ fontSize: 12, fontWeight: 700, color: TEXT }}>{adminName || "Admin"}</div>
               <div style={{ fontSize: 10, color: MUTED }}>System Admin</div>
@@ -1117,11 +1117,11 @@ export default function Admin() {
             }}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.12)"; e.currentTarget.style.color = RED; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.06)"; e.currentTarget.style.color = "rgba(239,68,68,0.7)"; }}
-          >⬡ Sign Out</button>
+          >Γ¼í Sign Out</button>
         </div>
       </aside>
 
-      {/* ═══ MAIN AREA ═══ */}
+      {/* ΓòÉΓòÉΓòÉ MAIN AREA ΓòÉΓòÉΓòÉ */}
       <div style={{ flex: 1, marginLeft: SIDEBAR_W, display: "flex", flexDirection: "column", minHeight: "100vh" }}>
 
         {/* TOP BAR */}
@@ -1135,7 +1135,7 @@ export default function Admin() {
           {/* Breadcrumb */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
             <span style={{ fontSize: 11, color: "rgba(255,255,255,0.2)" }}>Admin</span>
-            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>›</span>
+            <span style={{ fontSize: 11, color: "rgba(255,255,255,0.15)" }}>ΓÇ║</span>
             <span style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>{TAB_TITLES[activeTab]}</span>
           </div>
 
@@ -1169,7 +1169,7 @@ export default function Admin() {
           }}
           onMouseEnter={e => { e.currentTarget.style.color = TEXT; e.currentTarget.style.borderColor = BORDER2; }}
           onMouseLeave={e => { e.currentTarget.style.color = MUTED; e.currentTarget.style.borderColor = BORDER; }}
-          >↗ View Site</a>
+          >Γåù View Site</a>
         </header>
 
         {/* PAGE CONTENT */}
@@ -1198,17 +1198,17 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Mini stat cards — always visible */}
+          {/* Mini stat cards ΓÇö always visible */}
           {stats && (
             <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 28 }}>
-              <StatCard label="Total Users" value={stats.totalUsers}   icon="👥" gradient="radial-gradient(ellipse at top right, rgba(99,102,241,0.15), transparent 60%)" />
-              <StatCard label="Pro Users"        value={stats.proUsers}    icon="⭐" gradient="radial-gradient(ellipse at top right, rgba(139,92,246,0.15), transparent 60%)" />
-              <StatCard label="Total Images"       value={stats.totalImages}  icon="🖼️" gradient="radial-gradient(ellipse at top right, rgba(34,197,94,0.12), transparent 60%)" />
-              <StatCard label="Today's Images"           value={stats.todayImages} icon="📅" gradient="radial-gradient(ellipse at top right, rgba(245,158,11,0.12), transparent 60%)" />
+              <StatCard label="Total Users" value={stats.totalUsers}   icon="≡ƒæÑ" gradient="radial-gradient(ellipse at top right, rgba(99,102,241,0.15), transparent 60%)" />
+              <StatCard label="Pro Users"        value={stats.proUsers}    icon="Γ¡É" gradient="radial-gradient(ellipse at top right, rgba(139,92,246,0.15), transparent 60%)" />
+              <StatCard label="Total Images"       value={stats.totalImages}  icon="≡ƒû╝∩╕Å" gradient="radial-gradient(ellipse at top right, rgba(34,197,94,0.12), transparent 60%)" />
+              <StatCard label="Today's Images"           value={stats.todayImages} icon="≡ƒôà" gradient="radial-gradient(ellipse at top right, rgba(245,158,11,0.12), transparent 60%)" />
             </div>
           )}
 
-        {/* ── STATS ── */}
+        {/* ΓöÇΓöÇ STATS ΓöÇΓöÇ */}
         {activeTab === "stats" && stats && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             <div style={cardStyle}>
@@ -1252,12 +1252,12 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ── USERS ── */}
+        {/* ΓöÇΓöÇ USERS ΓöÇΓöÇ */}
         {activeTab === "users" && (
           <div>
             <div style={{ marginBottom: 16, display: "flex", gap: 10 }}>
               <input
-                placeholder="🔍 Search by name or email..." value={searchQuery}
+                placeholder="≡ƒöì Search by name or email..." value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)} dir="rtl"
                 style={{ ...inputStyle, maxWidth: 360 }}
                 onFocus={e => e.currentTarget.style.borderColor = ACCENT}
@@ -1271,7 +1271,7 @@ export default function Admin() {
               }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = BORDER2; e.currentTarget.style.color = TEXT; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = BORDER; e.currentTarget.style.color = MUTED; }}
-              >🔄 Refresh</button>
+              >≡ƒöä Refresh</button>
             </div>
 
             <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 16, overflow: "hidden" }}>
@@ -1311,7 +1311,7 @@ export default function Admin() {
                       <td style={{ padding: "12px 16px" }}><PlanBadge plan={u.plan} /></td>
                       <td style={{ padding: "12px 16px" }}>
                         <span style={{ fontFamily: "monospace", fontSize: 11, background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, padding: "2px 8px", borderRadius: 6, color: MUTED }}>
-                          {u.botCode || "—"}
+                          {u.botCode || "ΓÇö"}
                         </span>
                       </td>
                       <td style={{ padding: "12px 16px", fontWeight: 700, color: TEXT }}>{u.totalImages}</td>
@@ -1319,7 +1319,7 @@ export default function Admin() {
                       <td style={{ padding: "12px 16px" }}>
                         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                           {updatingId === u.id ? (
-                            <span style={{ fontSize: 12, color: MUTED }}>⏳</span>
+                            <span style={{ fontSize: 12, color: MUTED }}>ΓÅ│</span>
                           ) : (
                             <>
                               <select value={u.plan}
@@ -1332,8 +1332,8 @@ export default function Admin() {
                                 <option value="business">Business</option>
                               </select>
                               {!u.isAdmin
-                                ? <button onClick={() => handleAdminToggle(u.id, true)} style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: AMBER, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }} title="Grant Admin privileges">🛡️</button>
-                                : <button onClick={() => handleAdminToggle(u.id, false)} style={{ background: "rgba(100,116,139,0.08)", border: `1px solid ${BORDER}`, color: MUTED, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }} title="Revoke Admin privileges">−🛡️</button>
+                                ? <button onClick={() => handleAdminToggle(u.id, true)} style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)", color: AMBER, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }} title="Grant Admin privileges">≡ƒ¢í∩╕Å</button>
+                                : <button onClick={() => handleAdminToggle(u.id, false)} style={{ background: "rgba(100,116,139,0.08)", border: `1px solid ${BORDER}`, color: MUTED, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }} title="Revoke Admin privileges">ΓêÆ≡ƒ¢í∩╕Å</button>
                               }
                               {confirmDeleteId === u.id ? (
                                 <>
@@ -1341,7 +1341,7 @@ export default function Admin() {
                                   <button onClick={() => setConfirmDeleteId(null)} style={{ background: SURFACE, border: `1px solid ${BORDER}`, color: MUTED, padding: "4px 10px", borderRadius: 7, fontSize: 11, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Cancel</button>
                                 </>
                               ) : (
-                                <button onClick={() => setConfirmDeleteId(u.id)} style={{ background: "transparent", border: "none", color: "rgba(239,68,68,0.5)", padding: "4px 8px", borderRadius: 7, fontSize: 14, cursor: "pointer" }} title="Delete">🗑</button>
+                                <button onClick={() => setConfirmDeleteId(u.id)} style={{ background: "transparent", border: "none", color: "rgba(239,68,68,0.5)", padding: "4px 8px", borderRadius: 7, fontSize: 14, cursor: "pointer" }} title="Delete">≡ƒùæ</button>
                               )}
                             </>
                           )}
@@ -1358,7 +1358,7 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ── IMAGES ── */}
+        {/* ΓöÇΓöÇ IMAGES ΓöÇΓöÇ */}
         {activeTab === "images" && (
           <div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
@@ -1368,14 +1368,14 @@ export default function Admin() {
                     {img.imageUrl ? (
                       <img src={img.imageUrl} alt={img.title} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                     ) : (
-                      <span style={{ fontSize: 32, opacity: 0.3 }}>🖼️</span>
+                      <span style={{ fontSize: 32, opacity: 0.3 }}>≡ƒû╝∩╕Å</span>
                     )}
                   </div>
                   <div style={{ padding: "12px 14px" }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: TEXT, marginBottom: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {img.title || "Untitled"}
                     </div>
-                    <div style={{ fontSize: 11, color: MUTED }}>{img.userName || "—"}</div>
+                    <div style={{ fontSize: 11, color: MUTED }}>{img.userName || "ΓÇö"}</div>
                     <div style={{ fontSize: 10, color: MUTED, fontFamily: "monospace", marginTop: 2 }}>
                       {new Date(img.createdAt).toLocaleDateString("ar-MA")}
                     </div>
@@ -1391,7 +1391,7 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ── PLANS ── */}
+        {/* ΓöÇΓöÇ PLANS ΓöÇΓöÇ */}
         {activeTab === "plans" && (
           <div>
             <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: 16 }}>
@@ -1420,18 +1420,18 @@ export default function Admin() {
                     {[
                       { label: "Credits/mo", value: plan.monthly_credits },
                       { label: "Daily limit", value: plan.rate_limit_daily },
-                      { label: "API", value: plan.has_api_access ? "✓" : "✗" },
-                      { label: "Telegram Bot", value: plan.has_telegram_bot ? "✓" : "✗" },
+                      { label: "API", value: plan.has_api_access ? "Γ£ô" : "Γ£ù" },
+                      { label: "Telegram Bot", value: plan.has_telegram_bot ? "Γ£ô" : "Γ£ù" },
                     ].map(row => (
                       <div key={row.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
                         <span style={{ color: MUTED }}>{row.label}</span>
-                        <span style={{ color: row.value === "✓" ? GREEN : row.value === "✗" ? "rgba(239,68,68,0.5)" : TEXT, fontWeight: 700 }}>{row.value}</span>
+                        <span style={{ color: row.value === "Γ£ô" ? GREEN : row.value === "Γ£ù" ? "rgba(239,68,68,0.5)" : TEXT, fontWeight: 700 }}>{row.value}</span>
                       </div>
                     ))}
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => setEditingPlan(plan)} style={{ flex: 1, background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.2)", color: ACCENT, padding: "7px", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif", fontWeight: 600 }}>Edit</button>
-                    <button onClick={() => handleDeletePlan(plan.id)} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: RED, padding: "7px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>🗑</button>
+                    <button onClick={() => handleDeletePlan(plan.id)} style={{ background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", color: RED, padding: "7px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>≡ƒùæ</button>
                   </div>
                 </div>
               ))}
@@ -1496,7 +1496,7 @@ export default function Admin() {
                   </div>
                   <div style={{ display: "flex", gap: 10, marginTop: 24 }}>
                     <button onClick={handleSavePlan} disabled={planSaving} style={{ flex: 1, background: `linear-gradient(135deg, ${ACCENT}, ${ACCENT3})`, color: "#fff", border: "none", padding: "12px", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>
-                      {planSaving ? "⏳ Saving..." : "Save"}
+                      {planSaving ? "ΓÅ│ Saving..." : "Save"}
                     </button>
                     <button onClick={() => setEditingPlan(null)} style={{ flex: 1, background: SURFACE, border: `1px solid ${BORDER}`, color: MUTED, padding: "12px", borderRadius: 10, fontSize: 14, cursor: "pointer", fontFamily: "'Inter', sans-serif" }}>Cancel</button>
                   </div>
@@ -1506,11 +1506,11 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ── BOT ── */}
+        {/* ΓöÇΓöÇ BOT ΓöÇΓöÇ */}
         {activeTab === "bot" && (
           <div style={{ maxWidth: 560 }}>
             <div style={cardStyle}>
-              <h3 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 800, color: "#fff" }}>🤖 Telegram Bot Settings</h3>
+              <h3 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 800, color: "#fff" }}>≡ƒñû Telegram Bot Settings</h3>
 
               {botStatus && (
                 <div style={{
@@ -1519,7 +1519,7 @@ export default function Admin() {
                   border: `1px solid ${botStatus.connected ? "rgba(34,197,94,0.25)" : "rgba(239,68,68,0.2)"}`,
                   display: "flex", alignItems: "center", gap: 10,
                 }}>
-                  <span style={{ fontSize: 20 }}>{botStatus.connected ? "✅" : "❌"}</span>
+                  <span style={{ fontSize: 20 }}>{botStatus.connected ? "Γ£à" : "Γ¥î"}</span>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 14, color: botStatus.connected ? GREEN : RED }}>
                       {botStatus.connected ? `Connected: @${botStatus.botUsername}` : "Bot not connected"}
@@ -1552,24 +1552,24 @@ export default function Admin() {
                   cursor: botLoading ? "wait" : "pointer",
                   fontFamily: "'Inter', sans-serif",
                   opacity: !newBotToken.trim() ? 0.5 : 1,
-                }}>{botLoading ? "⏳ Connecting..." : "Connect Bot"}</button>
+                }}>{botLoading ? "ΓÅ│ Connecting..." : "Connect Bot"}</button>
               </div>
 
               <div style={{ marginTop: 20, padding: "14px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 10, border: `1px solid ${BORDER}` }}>
                 <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.8, margin: 0 }}>
-                  💡 To get the bot token, talk to <code style={{ fontFamily: "monospace", color: ACCENT2 }}>@BotFather</code> on Telegram and create a new bot.
+                  ≡ƒÆí To get the bot token, talk to <code style={{ fontFamily: "monospace", color: ACCENT2 }}>@BotFather</code> on Telegram and create a new bot.
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* ══════════ WHATSAPP TAB ══════════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ WHATSAPP TAB ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
         {activeTab === "whatsapp" && (
           <div style={{ maxWidth: 580 }}>
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 20px", fontSize: 16, fontWeight: 800, color: "#fff" }}>
-                💬 WhatsApp Bot
+                ≡ƒÆ¼ WhatsApp Bot
               </h3>
 
               {/* Status badge */}
@@ -1588,12 +1588,12 @@ export default function Admin() {
                 display: "flex", alignItems: "center", gap: 12,
               }}>
                 <span style={{ fontSize: 22 }}>
-                  {waStatus === "connected" ? "✅" : waStatus === "qr_ready" ? "📱" : waStatus === "connecting" ? "⏳" : "⭕"}
+                  {waStatus === "connected" ? "Γ£à" : waStatus === "qr_ready" ? "≡ƒô▒" : waStatus === "connecting" ? "ΓÅ│" : "Γ¡ò"}
                 </span>
                 <div>
                   <div style={{ fontWeight: 700, fontSize: 14, color: waStatus === "connected" ? GREEN : waStatus === "qr_ready" || waStatus === "connecting" ? "#f59e0b" : MUTED }}>
                     {waStatus === "connected"
-                      ? `Connected${waPhone ? ` — +${waPhone}` : ""}`
+                      ? `Connected${waPhone ? ` ΓÇö +${waPhone}` : ""}`
                       : waStatus === "qr_ready"
                       ? "Waiting for QR scan"
                       : waStatus === "connecting"
@@ -1604,7 +1604,7 @@ export default function Admin() {
                     {waStatus === "connected"
                       ? "Bot is running and receiving messages"
                       : waStatus === "qr_ready"
-                      ? "Open WhatsApp on your phone → Linked Devices → Link a Device"
+                      ? "Open WhatsApp on your phone ΓåÆ Linked Devices ΓåÆ Link a Device"
                       : waStatus === "connecting"
                       ? "Please wait..."
                       : "Press 'Start Bot' to begin"}
@@ -1626,7 +1626,7 @@ export default function Admin() {
                     <img src={waQr} alt="WhatsApp QR Code" style={{ width: 220, height: 220, display: "block" }} />
                   </div>
                   <div style={{ fontSize: 11, color: MUTED, marginTop: 10, lineHeight: 1.7 }}>
-                    WhatsApp → ⋮ → Linked Devices → Link a Device → Scan Code
+                    WhatsApp ΓåÆ Γï« ΓåÆ Linked Devices ΓåÆ Link a Device ΓåÆ Scan Code
                   </div>
                 </div>
               )}
@@ -1646,7 +1646,7 @@ export default function Admin() {
                       opacity: waLoading ? 0.6 : 1,
                     }}
                   >
-                    {waLoading ? "⏳ Starting..." : "▶ Start Bot"}
+                    {waLoading ? "ΓÅ│ Starting..." : "Γû╢ Start Bot"}
                   </button>
                 )}
 
@@ -1661,7 +1661,7 @@ export default function Admin() {
                       cursor: "pointer", fontFamily: "'Inter', sans-serif",
                     }}
                   >
-                    🔄 Refresh Status
+                    ≡ƒöä Refresh Status
                   </button>
                 )}
 
@@ -1676,7 +1676,7 @@ export default function Admin() {
                       cursor: waLoading ? "wait" : "pointer", fontFamily: "'Inter', sans-serif",
                     }}
                   >
-                    ⏹ Stop Bot
+                    ΓÅ╣ Stop Bot
                   </button>
                 )}
 
@@ -1691,7 +1691,7 @@ export default function Admin() {
                       cursor: waLoading ? "wait" : "pointer", fontFamily: "'Inter', sans-serif",
                     }}
                   >
-                    🚪 Disconnect
+                    ≡ƒÜ¬ Disconnect
                   </button>
                 )}
               </div>
@@ -1700,7 +1700,7 @@ export default function Admin() {
             {/* Instructions card */}
             <div style={{ ...cardStyle, marginTop: 16 }}>
               <h4 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700, color: TEXT }}>
-                📖 How to Use the Bot
+                ≡ƒôû How to Use the Bot
               </h4>
               <div style={{ fontSize: 13, color: MUTED, lineHeight: 1.9 }}>
                 <p style={{ margin: "0 0 10px" }}>
@@ -1717,34 +1717,34 @@ export default function Admin() {
                   ratio: 16:9
                 </div>
                 <p style={{ margin: "0 0 8px", fontSize: 12 }}>
-                  💡 <strong style={{ color: TEXT }}>Template field</strong> accepts: template name (e.g., <code style={{ color: ACCENT2 }}>breaking</code>), API template name (e.g., <code style={{ color: ACCENT2 }}>my-custom-template</code>), or a numeric <strong>Template ID</strong> (e.g., <code style={{ color: ACCENT2 }}>6</code>).
+                  ≡ƒÆí <strong style={{ color: TEXT }}>Template field</strong> accepts: template name (e.g., <code style={{ color: ACCENT2 }}>breaking</code>), API template name (e.g., <code style={{ color: ACCENT2 }}>my-custom-template</code>), or a numeric <strong>Template ID</strong> (e.g., <code style={{ color: ACCENT2 }}>6</code>).
                 </p>
                 <p style={{ margin: "0 0 8px" }}>Then send a background image, or type <code style={{ color: ACCENT2 }}>/skip</code> to continue without an image.</p>
                 <p style={{ margin: "0 0 4px" }}>
                   <strong style={{ color: TEXT }}>Available Commands:</strong>
                 </p>
                 <ul style={{ margin: "4px 0 0 0", paddingRight: 20 }}>
-                  <li><code style={{ color: ACCENT2 }}>/start</code> — Start using</li>
-                  <li><code style={{ color: ACCENT2 }}>/help</code> — Help</li>
-                  <li><code style={{ color: ACCENT2 }}>/templates</code> — Template list</li>
-                  <li><code style={{ color: ACCENT2 }}>/skip</code> — Continue without background image</li>
+                  <li><code style={{ color: ACCENT2 }}>/start</code> ΓÇö Start using</li>
+                  <li><code style={{ color: ACCENT2 }}>/help</code> ΓÇö Help</li>
+                  <li><code style={{ color: ACCENT2 }}>/templates</code> ΓÇö Template list</li>
+                  <li><code style={{ color: ACCENT2 }}>/skip</code> ΓÇö Continue without background image</li>
                 </ul>
               </div>
 
               <div style={{ marginTop: 14, padding: "12px 14px", background: "rgba(239,68,68,0.06)", borderRadius: 10, border: "1px solid rgba(239,68,68,0.15)" }}>
                 <p style={{ fontSize: 12, color: "#f87171", margin: 0, lineHeight: 1.7 }}>
-                  ⚠️ <strong>Warning:</strong> The bot uses unofficial WhatsApp Web. There is a small risk of account restriction. It is recommended to use a dedicated phone number for the bot.
+                  ΓÜá∩╕Å <strong>Warning:</strong> The bot uses unofficial WhatsApp Web. There is a small risk of account restriction. It is recommended to use a dedicated phone number for the bot.
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {/* ══════════ TEMPLATES TAB ══════════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ TEMPLATES TAB ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
         {activeTab === "templates" && (
           <div style={{ padding: "0 32px 40px" }}>
 
-            {/* ── Pending User Templates (approval queue) ── */}
+            {/* ΓöÇΓöÇ Pending User Templates (approval queue) ΓöÇΓöÇ */}
             <div style={{ ...cardStyle, marginBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <div>
@@ -1759,7 +1759,7 @@ export default function Admin() {
                   <p style={{ fontSize: 13, color: MUTED, margin: "4px 0 0" }}>User templates requested for gallery publication</p>
                 </div>
                 <button onClick={loadPendingTmpls} style={{ background: "rgba(255,255,255,0.05)", border: `1px solid ${BORDER}`, color: MUTED, padding: "8px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer" }}>
-                  🔄 Refresh
+                  ≡ƒöä Refresh
                 </button>
               </div>
 
@@ -1772,15 +1772,15 @@ export default function Admin() {
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                 }}>
                   {approvalMsg.text}
-                  <button onClick={() => setApprovalMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button>
+                  <button onClick={() => setApprovalMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>Γ£ò</button>
                 </div>
               )}
 
               {pendingLoading ? (
-                <div style={{ textAlign: "center", padding: 32, color: MUTED }}>⏳ Loading...</div>
+                <div style={{ textAlign: "center", padding: 32, color: MUTED }}>ΓÅ│ Loading...</div>
               ) : pendingTmpls.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "32px 0", color: MUTED }}>
-                  <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+                  <div style={{ fontSize: 32, marginBottom: 8 }}>Γ£à</div>
                   <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>No pending requests</div>
                   <div style={{ fontSize: 12, marginTop: 4 }}>All templates have been processed</div>
                 </div>
@@ -1793,14 +1793,14 @@ export default function Admin() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
                           <div>
                             <div style={{ fontWeight: 700, fontSize: 14, color: TEXT }}>{t.name}</div>
-                            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>User #{t.userId} · {t.category}</div>
+                            <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>User #{t.userId} ┬╖ {t.category}</div>
                           </div>
                           <span style={{ background: "rgba(245,158,11,0.15)", color: AMBER, fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(245,158,11,0.3)" }}>
                             Awaiting approval
                           </span>
                         </div>
                         <div style={{ fontSize: 11, color: MUTED, marginBottom: 12 }}>
-                          Font: {t.font} · {new Date(t.createdAt).toLocaleDateString("ar-MA")}
+                          Font: {t.font} ┬╖ {new Date(t.createdAt).toLocaleDateString("ar-MA")}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button onClick={() => handleApprove(t.id)} style={{
@@ -1808,22 +1808,22 @@ export default function Admin() {
                             background: "rgba(34,197,94,0.15)", color: GREEN,
                             fontSize: 12, fontWeight: 700, cursor: "pointer",
                             border: "1px solid rgba(34,197,94,0.3)",
-                          }}>✅ Approve</button>
+                          }}>Γ£à Approve</button>
                           <button onClick={() => handleReject(t.id)} style={{
                             flex: 1, padding: "8px 0", borderRadius: 8,
                             background: "rgba(239,68,68,0.1)", color: RED,
                             fontSize: 12, fontWeight: 700, cursor: "pointer",
                             border: "1px solid rgba(239,68,68,0.25)",
-                          }}>🚫 Reject</button>
+                          }}>≡ƒÜ½ Reject</button>
                           <button onClick={() => {
                             const res = fetch(`/api/admin/templates/${t.id}`, { method: "DELETE", headers: authHeaders() });
-                            res.then(r => { if (r.ok) { setPendingTmpls(p => p.filter(x => x.id !== t.id)); setApprovalMsg({ type: "ok", text: "🗑️ Template deleted" }); } });
+                            res.then(r => { if (r.ok) { setPendingTmpls(p => p.filter(x => x.id !== t.id)); setApprovalMsg({ type: "ok", text: "≡ƒùæ∩╕Å Template deleted" }); } });
                           }} style={{
                             padding: "8px 10px", borderRadius: 8,
                             background: "rgba(239,68,68,0.06)", color: RED,
                             fontSize: 12, cursor: "pointer",
                             border: "1px solid rgba(239,68,68,0.2)",
-                          }} title="Delete template">🗑️</button>
+                          }} title="Delete template">≡ƒùæ∩╕Å</button>
                         </div>
                       </div>
                     </div>
@@ -1845,13 +1845,13 @@ export default function Admin() {
                   cursor: "pointer", fontFamily: "'Inter', sans-serif",
                   textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 6,
                   boxShadow: "0 4px 20px rgba(99,102,241,0.4)",
-                }}>🎨 Professional Template Builder</a>
+                }}>≡ƒÄ¿ Professional Template Builder</a>
               </div>
 
-              {/* ── AI Generator ── */}
+              {/* ΓöÇΓöÇ AI Generator ΓöÇΓöÇ */}
               <div style={{ marginBottom: 28, padding: "18px 20px", background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 14 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 4, display: "flex", alignItems: "center", gap: 7 }}>
-                  <span>✨</span> Generate Template with AI
+                  <span>Γ£¿</span> Generate Template with AI
                 </div>
                 <div style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Write a description of the template you want and the system will generate its settings automatically</div>
                 <div style={{ display: "flex", gap: 10 }}>
@@ -1871,11 +1871,11 @@ export default function Admin() {
                     cursor: aiLoading ? "wait" : "pointer",
                     fontFamily: "'Inter', sans-serif", whiteSpace: "nowrap",
                     opacity: !aiPromptText.trim() ? 0.5 : 1,
-                  }}>{aiLoading ? "⏳ Generating..." : "✨ Generate"}</button>
+                  }}>{aiLoading ? "ΓÅ│ Generating..." : "Γ£¿ Generate"}</button>
                 </div>
               </div>
 
-              {/* ── Status message ── */}
+              {/* ΓöÇΓöÇ Status message ΓöÇΓöÇ */}
               {tmplMsg && (
                 <div style={{
                   marginBottom: 16, padding: "12px 16px", borderRadius: 10,
@@ -1885,16 +1885,16 @@ export default function Admin() {
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                 }}>
                   {tmplMsg.text}
-                  <button onClick={() => setTmplMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>✕</button>
+                  <button onClick={() => setTmplMsg(null)} style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", fontSize: 16 }}>Γ£ò</button>
                 </div>
               )}
 
-              {/* ── Templates List ── */}
+              {/* ΓöÇΓöÇ Templates List ΓöÇΓöÇ */}
               {tmplLoading && !sysTmpls.length ? (
-                <div style={{ textAlign: "center", padding: "40px", color: MUTED }}>⏳ Loading...</div>
+                <div style={{ textAlign: "center", padding: "40px", color: MUTED }}>ΓÅ│ Loading...</div>
               ) : sysTmpls.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "48px", color: MUTED }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>🎨</div>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>≡ƒÄ¿</div>
                   <div style={{ fontSize: 15, fontWeight: 700, color: TEXT, marginBottom: 6 }}>No templates yet</div>
                   <div style={{ fontSize: 13 }}>Use AI generation or create a template manually</div>
                 </div>
@@ -1927,15 +1927,15 @@ export default function Admin() {
                         <div style={{ marginBottom: 10 }}>
                           {t.isApproved === true ? (
                             <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "rgba(34,197,94,0.12)", color: GREEN, border: "1px solid rgba(34,197,94,0.25)" }}>
-                              ✅ Approved — Live in Gallery
+                              Γ£à Approved ΓÇö Live in Gallery
                             </span>
                           ) : t.isApproved === false ? (
                             <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "rgba(239,68,68,0.1)", color: RED, border: "1px solid rgba(239,68,68,0.2)" }}>
-                              🚫 Rejected — Hidden
+                              ≡ƒÜ½ Rejected ΓÇö Hidden
                             </span>
                           ) : (
                             <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 10px", borderRadius: 999, background: "rgba(245,158,11,0.12)", color: AMBER, border: "1px solid rgba(245,158,11,0.25)" }}>
-                              ⏳ Pending Review
+                              ΓÅ│ Pending Review
                             </span>
                           )}
                         </div>
@@ -1946,7 +1946,7 @@ export default function Admin() {
                           </span>
                           {t.aiPrompt && (
                             <span style={{ fontSize: 10, color: "#8b5cf6", background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)", padding: "2px 8px", borderRadius: 6 }}>
-                              ✨ AI
+                              Γ£¿ AI
                             </span>
                           )}
                         </div>
@@ -1957,11 +1957,11 @@ export default function Admin() {
                             <button onClick={() => handleApprove(t.id).then(() => setSysTmpls(p => p.map(x => x.id === t.id ? { ...x, isApproved: true } : x)))} style={{
                               flex: 1, padding: "6px 0", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer",
                               background: "rgba(34,197,94,0.15)", color: GREEN, border: "1px solid rgba(34,197,94,0.3)",
-                            }}>✅ Approve</button>
+                            }}>Γ£à Approve</button>
                             <button onClick={() => handleReject(t.id).then(() => setSysTmpls(p => p.map(x => x.id === t.id ? { ...x, isApproved: false } : x)))} style={{
                               flex: 1, padding: "6px 0", borderRadius: 7, fontSize: 11, fontWeight: 700, cursor: "pointer",
                               background: "rgba(239,68,68,0.1)", color: RED, border: "1px solid rgba(239,68,68,0.25)",
-                            }}>🚫 Reject</button>
+                            }}>≡ƒÜ½ Reject</button>
                           </div>
                         )}
 
@@ -1972,12 +1972,12 @@ export default function Admin() {
                             cursor: "pointer", fontFamily: "'Inter', sans-serif",
                             textDecoration: "none", textAlign: "center", display: "flex",
                             alignItems: "center", justifyContent: "center", gap: 4,
-                          }}>✏️ Edit</a>
+                          }}>Γ£Å∩╕Å Edit</a>
                           <button onClick={() => handleDeleteTmpl(t.id)} style={{
                             background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
                             color: RED, padding: "8px 10px", borderRadius: 8, fontSize: 13,
                             cursor: "pointer",
-                          }}>🗑️</button>
+                          }}>≡ƒùæ∩╕Å</button>
                         </div>
                       </div>
                     </div>
@@ -1988,14 +1988,14 @@ export default function Admin() {
           </div>
         )}
 
-        {/* ══════════ SETTINGS TAB ══════════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ SETTINGS TAB ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
         {activeTab === "settings" && (
           <div style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 24 }}>
 
-            {/* ── Google OAuth ── */}
+            {/* ΓöÇΓöÇ Google OAuth ΓöÇΓöÇ */}
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🔑</span>
+                <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>≡ƒöæ</span>
                 Google Sign-In
               </h3>
               <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
@@ -2010,7 +2010,7 @@ export default function Admin() {
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18 }}>{googleSettings.hasClientId ? "✅" : "❌"}</span>
+                    <span style={{ fontSize: 18 }}>{googleSettings.hasClientId ? "Γ£à" : "Γ¥î"}</span>
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 13, color: googleSettings.hasClientId ? GREEN : RED }}>
                         {googleSettings.hasClientId ? "Enabled" : "Disabled"}
@@ -2048,7 +2048,7 @@ export default function Admin() {
                   cursor: settingsSaving === "google" ? "wait" : "pointer",
                   fontFamily: "'Inter', sans-serif", whiteSpace: "nowrap",
                   opacity: !newGoogleId.trim() ? 0.5 : 1,
-                }}>{settingsSaving === "google" ? "⏳ Saving..." : "Save"}</button>
+                }}>{settingsSaving === "google" ? "ΓÅ│ Saving..." : "Save"}</button>
               </div>
 
               {settingsMsg?.key === "google" && (
@@ -2061,18 +2061,18 @@ export default function Admin() {
 
               <div style={{ marginTop: 16, padding: "12px 14px", background: "rgba(255,255,255,0.02)", borderRadius: 10, border: `1px solid ${BORDER}` }}>
                 <p style={{ fontSize: 12, color: MUTED, lineHeight: 1.8, margin: 0 }}>
-                  💡 To get Client ID: go to{" "}
+                  ≡ƒÆí To get Client ID: go to{" "}
                   <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" style={{ color: ACCENT2 }}>Google Cloud Console</a>
-                  {" "}→ Create OAuth 2.0 Client ID → Add your site domain to "Authorized JavaScript origins".
+                  {" "}ΓåÆ Create OAuth 2.0 Client ID ΓåÆ Add your site domain to "Authorized JavaScript origins".
                 </p>
               </div>
             </div>
 
-            {/* ── SMTP / Email ── */}
-            {/* ── AI Image Generation Settings ── */}
+            {/* ΓöÇΓöÇ SMTP / Email ΓöÇΓöÇ */}
+            {/* ΓöÇΓöÇ AI Image Generation Settings ΓöÇΓöÇ */}
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 32, height: 32, background: "rgba(99,102,241,0.1)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>✨</span>
+                <span style={{ width: 32, height: 32, background: "rgba(99,102,241,0.1)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>Γ£¿</span>
                 AI Image Generation
               </h3>
               <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
@@ -2089,42 +2089,42 @@ export default function Admin() {
                     <div style={{ fontSize: 12, color: MUTED }}>Master switch to enable or disable the feature globally.</div>
                   </div>
                 </label>
-              {/* ── Points System Settings ── */}
+              {/* ΓöÇΓöÇ Points System Settings ΓöÇΓöÇ */}
               <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
                 <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>⚙️</span>
-                  إعدادات نظام النقاط - Points System Settings
+                  <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>ΓÜÖ∩╕Å</span>
+                  ╪Ñ╪╣╪»╪º╪»╪º╪¬ ┘å╪╕╪º┘à ╪º┘ä┘å┘é╪º╪╖ - Points System Settings
                 </h3>
                 <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
-                  تحكم في تكلفة النقاط لكل ميزة ومكافآت المستخدمين الجدد
+                  ╪¬╪¡┘â┘à ┘ü┘è ╪¬┘â┘ä┘ü╪⌐ ╪º┘ä┘å┘é╪º╪╖ ┘ä┘â┘ä ┘à┘è╪▓╪⌐ ┘ê┘à┘â╪º┘ü╪ó╪¬ ╪º┘ä┘à╪│╪¬╪«╪»┘à┘è┘å ╪º┘ä╪¼╪»╪»
                 </p>
 
                 {/* Cost Preview Box */}
                 <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 16, marginBottom: 24, border: `1px solid ${BORDER}` }}>
-                  <h4 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: ACCENT2 }}>💡 معاينة التكاليف - Cost Preview</h4>
+                  <h4 style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: ACCENT2 }}>≡ƒÆí ┘à╪╣╪º┘è┘å╪⌐ ╪º┘ä╪¬┘â╪º┘ä┘è┘ü - Cost Preview</h4>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13, color: TEXT }}>
-                    <div>• بطاقة بدون AI: <strong style={{ color: "#fff" }}>{aiSettings.baseCost}</strong> نقطة</div>
-                    <div>• بطاقة مع صورة AI: <strong style={{ color: "#fff" }}>{aiSettings.baseCost + aiSettings.cost}</strong> نقطة</div>
-                    <div>• نشر مقال: <strong style={{ color: "#fff" }}>{aiSettings.blogCost}</strong> نقطة</div>
-                    <div style={{ color: GREEN }}>• مكافأة تسجيل جديد: <strong style={{ color: "#fff" }}>+{aiSettings.signupBonus}</strong> نقطة 🎁</div>
+                    <div>ΓÇó ╪¿╪╖╪º┘é╪⌐ ╪¿╪»┘ê┘å AI: <strong style={{ color: "#fff" }}>{aiSettings.baseCost}</strong> ┘å┘é╪╖╪⌐</div>
+                    <div>ΓÇó ╪¿╪╖╪º┘é╪⌐ ┘à╪╣ ╪╡┘ê╪▒╪⌐ AI: <strong style={{ color: "#fff" }}>{aiSettings.baseCost + aiSettings.cost}</strong> ┘å┘é╪╖╪⌐</div>
+                    <div>ΓÇó ┘å╪┤╪▒ ┘à┘é╪º┘ä: <strong style={{ color: "#fff" }}>{aiSettings.blogCost}</strong> ┘å┘é╪╖╪⌐</div>
+                    <div style={{ color: GREEN }}>ΓÇó ┘à┘â╪º┘ü╪ú╪⌐ ╪¬╪│╪¼┘è┘ä ╪¼╪»┘è╪»: <strong style={{ color: "#fff" }}>+{aiSettings.signupBonus}</strong> ┘å┘é╪╖╪⌐ ≡ƒÄü</div>
                   </div>
                 </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
                   <div>
-                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>إنشاء بطاقة (أساسي)</label>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>╪Ñ┘å╪┤╪º╪í ╪¿╪╖╪º┘é╪⌐ (╪ú╪│╪º╪│┘è)</label>
                     <input type="number" value={aiSettings.baseCost} onChange={e => setAiSettings(s => ({ ...s, baseCost: parseInt(e.target.value) || 0 }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>صورة ذكاء اصطناعي</label>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>╪╡┘ê╪▒╪⌐ ╪░┘â╪º╪í ╪º╪╡╪╖┘å╪º╪╣┘è</label>
                     <input type="number" value={aiSettings.cost} onChange={e => setAiSettings(s => ({ ...s, cost: parseInt(e.target.value) || 0 }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>نشر مقال مدونة</label>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>┘å╪┤╪▒ ┘à┘é╪º┘ä ┘à╪»┘ê┘å╪⌐</label>
                     <input type="number" value={aiSettings.blogCost} onChange={e => setAiSettings(s => ({ ...s, blogCost: parseInt(e.target.value) || 0 }))} style={inputStyle} />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>🎁 مكافأة التسجيل</label>
+                    <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>≡ƒÄü ┘à┘â╪º┘ü╪ú╪⌐ ╪º┘ä╪¬╪│╪¼┘è┘ä</label>
                     <input type="number" value={aiSettings.signupBonus} onChange={e => setAiSettings(s => ({ ...s, signupBonus: parseInt(e.target.value) || 0 }))} style={inputStyle} />
                   </div>
                 </div>
@@ -2133,25 +2133,25 @@ export default function Admin() {
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", color: TEXT, fontSize: 14, fontWeight: 600 }}>
                   <input type="checkbox" checked={aiSettings.enabled} onChange={e => setAiSettings(s => ({ ...s, enabled: e.target.checked }))} />
-                  تفعيل توليد الصور بالذكاء الاصطناعي - AI Image Generation Enabled
+                  ╪¬┘ü╪╣┘è┘ä ╪¬┘ê┘ä┘è╪» ╪º┘ä╪╡┘ê╪▒ ╪¿╪º┘ä╪░┘â╪º╪í ╪º┘ä╪º╪╡╪╖┘å╪º╪╣┘è - AI Image Generation Enabled
                 </label>
               </div>
 
               <div style={{ marginBottom: 20 }}>
-                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>حالة الخدمة - Service Status</label>
+                <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>╪¡╪º┘ä╪⌐ ╪º┘ä╪«╪»┘à╪⌐ - Service Status</label>
                 <div style={{ display: "flex", gap: 12 }}>
                   <select value={aiSettings.status} onChange={e => setAiSettings(s => ({ ...s, status: e.target.value }))} style={{ ...inputStyle, width: "150px" }}>
-                    <option value="operational">🟢 Operational</option>
-                    <option value="degraded">🟡 Degraded</option>
-                    <option value="offline">🔴 Offline</option>
+                    <option value="operational">≡ƒƒó Operational</option>
+                    <option value="degraded">≡ƒƒí Degraded</option>
+                    <option value="offline">≡ƒö┤ Offline</option>
                   </select>
-                  <input type="text" value={aiSettings.statusMessage} onChange={e => setAiSettings(s => ({ ...s, statusMessage: e.target.value }))} placeholder="رسالة الحالة (مثلاً: تحت الصيانة)" style={{ ...inputStyle, flex: 1 }} />
+                  <input type="text" value={aiSettings.statusMessage} onChange={e => setAiSettings(s => ({ ...s, statusMessage: e.target.value }))} placeholder="╪▒╪│╪º┘ä╪⌐ ╪º┘ä╪¡╪º┘ä╪⌐ (┘à╪½┘ä╪º┘ï: ╪¬╪¡╪¬ ╪º┘ä╪╡┘è╪º┘å╪⌐)" style={{ ...inputStyle, flex: 1 }} />
                 </div>
               </div>
 
               {(aiSettings.baseCost === 0 || aiSettings.cost === 0 || aiSettings.blogCost === 0) && (
                 <div style={{ marginBottom: 20, padding: 12, borderRadius: 8, background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.2)", color: AMBER, fontSize: 13 }}>
-                  ⚠️ تحذير: إحدى الميزات مجانية (تكلفة = 0). تأكد أن هذا مقصود.
+                  ΓÜá∩╕Å ╪¬╪¡╪░┘è╪▒: ╪Ñ╪¡╪»┘ë ╪º┘ä┘à┘è╪▓╪º╪¬ ┘à╪¼╪º┘å┘è╪⌐ (╪¬┘â┘ä┘ü╪⌐ = 0). ╪¬╪ú┘â╪» ╪ú┘å ┘ç╪░╪º ┘à┘é╪╡┘ê╪».
                 </div>
               )}
 
@@ -2161,7 +2161,7 @@ export default function Admin() {
                 borderRadius: 10, fontSize: 14, fontWeight: 700,
                 cursor: settingsSaving === "ai" ? "wait" : "pointer",
                 fontFamily: "'Inter', sans-serif",
-              }}>{settingsSaving === "ai" ? "⏳ Saving..." : "💾 Save AI Settings"}</button>
+              }}>{settingsSaving === "ai" ? "ΓÅ│ Saving..." : "≡ƒÆ╛ Save AI Settings"}</button>
 
               {settingsMsg?.key === "ai" && (
                 <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
@@ -2172,10 +2172,10 @@ export default function Admin() {
               )}
             </div>
 
-            {/* ── AI Image Provider Settings ── */}
+            {/* ΓöÇΓöÇ AI Image Provider Settings ΓöÇΓöÇ */}
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 32, height: 32, background: "rgba(34,211,238,0.1)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🚀</span>
+                <span style={{ width: 32, height: 32, background: "rgba(34,211,238,0.1)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>≡ƒÜÇ</span>
                 AI Image Provider Settings
               </h3>
               <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
@@ -2213,7 +2213,7 @@ export default function Admin() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "20px", background: "rgba(255,255,255,0.02)", borderRadius: 14, border: `1px solid ${BORDER}`, marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ fontSize: 20 }}>🍌</div>
+                      <div style={{ fontSize: 20 }}>≡ƒìî</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                         <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>Nanobanana Status</div>
                         <div style={{ display: "flex", gap: 12, marginBottom: 4 }}>
@@ -2226,7 +2226,7 @@ export default function Admin() {
                         </div>
                         {nbStatus?.lastTestResult ? (
                           <div style={{ fontSize: 11, color: MUTED }}>
-                            Last tested {Math.round((Date.now() - new Date(nbStatus.lastTestResult.testedAt).getTime()) / 60000)}m ago • Latency: {nbStatus.lastTestResult.latencyMs}ms
+                            Last tested {Math.round((Date.now() - new Date(nbStatus.lastTestResult.testedAt).getTime()) / 60000)}m ago ΓÇó Latency: {nbStatus.lastTestResult.latencyMs}ms
                           </div>
                         ) : (
                           <div style={{ fontSize: 11, color: MUTED }}>Not tested yet</div>
@@ -2241,7 +2241,7 @@ export default function Admin() {
                         color: nbStatus?.lastTestResult?.success ? GREEN : ACCENT,
                         border: `1px solid ${nbStatus?.lastTestResult?.success ? GREEN : ACCENT}40`
                       }}>
-                        {nbTesting ? "Testing..." : nbStatus?.lastTestResult?.success ? "🟢 Connected" : nbStatus?.lastTestResult?.success === false ? "🔴 Disconnected" : "Test Connection"}
+                        {nbTesting ? "Testing..." : nbStatus?.lastTestResult?.success ? "≡ƒƒó Connected" : nbStatus?.lastTestResult?.success === false ? "≡ƒö┤ Disconnected" : "Test Connection"}
                       </button>
                     </div>
                   </div>
@@ -2299,7 +2299,7 @@ export default function Admin() {
                     )}
                     {providerSettings.nanobanana.queueEnabled && (
                       <div style={{ marginTop: 12, padding: "10px", background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, fontSize: 11, color: ACCENT }}>
-                        ℹ️ Requests will be processed one at a time. Maximum wait time: 5 minutes.
+                        Γä╣∩╕Å Requests will be processed one at a time. Maximum wait time: 5 minutes.
                       </div>
                     )}
                   </div>
@@ -2311,7 +2311,7 @@ export default function Admin() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 20, padding: "20px", background: "rgba(255,255,255,0.02)", borderRadius: 14, border: `1px solid ${BORDER}`, marginBottom: 24 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <div style={{ fontSize: 20 }}>🤖</div>
+                      <div style={{ fontSize: 20 }}>≡ƒñû</div>
                       <div>
                         <div style={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>OpenAI API Configuration</div>
                         <div style={{ fontSize: 11, color: MUTED }}>DALL-E Integration</div>
@@ -2369,7 +2369,7 @@ export default function Admin() {
                 color: "#fff", border: "none", padding: "14px", borderRadius: 12, fontSize: 15, fontWeight: 800,
                 cursor: settingsSaving === "provider" ? "wait" : "pointer", boxShadow: `0 8px 24px ${ACCENT}30`
               }}>
-                {settingsSaving === "provider" ? "⏳ Saving Configuration..." : "💾 Save Provider Settings"}
+                {settingsSaving === "provider" ? "ΓÅ│ Saving Configuration..." : "≡ƒÆ╛ Save Provider Settings"}
               </button>
 
               {settingsMsg?.key === "provider" && (
@@ -2385,7 +2385,7 @@ export default function Admin() {
 
             <div style={cardStyle}>
               <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📧</span>
+                <span style={{ width: 32, height: 32, background: "rgba(255,255,255,0.06)", borderRadius: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>≡ƒôº</span>
                 Email Settings (SMTP)
               </h3>
               <p style={{ fontSize: 13, color: MUTED, margin: "0 0 20px", lineHeight: 1.7 }}>
@@ -2400,9 +2400,9 @@ export default function Admin() {
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 18 }}>{smtpSettings.hasCredentials ? "✅" : "⚠️"}</span>
+                    <span style={{ fontSize: 18 }}>{smtpSettings.hasCredentials ? "Γ£à" : "ΓÜá∩╕Å"}</span>
                     <div style={{ fontSize: 13, fontWeight: 600, color: smtpSettings.hasCredentials ? GREEN : AMBER }}>
-                      {smtpSettings.hasCredentials ? `Enabled — ${smtpSettings.user}` : "Credentials incomplete"}
+                      {smtpSettings.hasCredentials ? `Enabled ΓÇö ${smtpSettings.user}` : "Credentials incomplete"}
                     </div>
                   </div>
                   {smtpSettings.hasCredentials && (
@@ -2450,7 +2450,7 @@ export default function Admin() {
                     <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" style={{ color: ACCENT2 }}>App Password</a>)
                   </span>
                 </label>
-                <input type="password" dir="ltr" placeholder={smtpSettings?.passMasked || "••••••••"} value={smtpForm.pass}
+                <input type="password" dir="ltr" placeholder={smtpSettings?.passMasked || "ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó"} value={smtpForm.pass}
                   onChange={e => setSmtpForm(f => ({ ...f, pass: e.target.value }))}
                   style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13 }}
                   onFocus={e => e.currentTarget.style.borderColor = ACCENT}
@@ -2459,7 +2459,7 @@ export default function Admin() {
 
               <div style={{ marginBottom: 18 }}>
                 <label style={{ fontSize: 12, color: MUTED, display: "block", marginBottom: 7, fontWeight: 600 }}>
-                  Sender Name <span style={{ fontWeight: 400 }}>(optional — e.g. NewsCard Pro)</span>
+                  Sender Name <span style={{ fontWeight: 400 }}>(optional ΓÇö e.g. NewsCard Pro)</span>
                 </label>
                 <input type="email" dir="ltr" placeholder={smtpForm.user || "sender@gmail.com"} value={smtpForm.from}
                   onChange={e => setSmtpForm(f => ({ ...f, from: e.target.value }))}
@@ -2474,7 +2474,7 @@ export default function Admin() {
                 borderRadius: 10, fontSize: 14, fontWeight: 700,
                 cursor: settingsSaving === "smtp" ? "wait" : "pointer",
                 fontFamily: "'Inter', sans-serif",
-              }}>{settingsSaving === "smtp" ? "⏳ Saving..." : "💾 Save Settings"}</button>
+              }}>{settingsSaving === "smtp" ? "ΓÅ│ Saving..." : "≡ƒÆ╛ Save Settings"}</button>
 
               {settingsMsg?.key === "smtp" && (
                 <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
@@ -2486,7 +2486,7 @@ export default function Admin() {
 
               {/* Test Email */}
               <div style={{ marginTop: 24, paddingTop: 20, borderTop: `1px solid ${BORDER}` }}>
-                <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#fff" }}>🧪 Send Test Email</h4>
+                <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#fff" }}>≡ƒº¬ Send Test Email</h4>
                 <div style={{ display: "flex", gap: 10 }}>
                   <input type="email" dir="ltr" placeholder="test@example.com" value={testEmailTo}
                     onChange={e => setTestEmailTo(e.target.value)}
@@ -2498,7 +2498,7 @@ export default function Admin() {
                     color: ACCENT2, padding: "11px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700,
                     cursor: settingsSaving === "test" ? "wait" : "pointer",
                     fontFamily: "'Inter', sans-serif", whiteSpace: "nowrap",
-                  }}>{settingsSaving === "test" ? "⏳ Sending..." : "Send Test"}</button>
+                  }}>{settingsSaving === "test" ? "ΓÅ│ Sending..." : "Send Test"}</button>
                 </div>
                 {settingsMsg?.key === "smtp-test" && (
                   <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 8, fontSize: 13, fontWeight: 600,
@@ -2510,20 +2510,20 @@ export default function Admin() {
               </div>
             </div>
 
-          {/* ── Homepage Settings (full editor) ── */}
+          {/* ΓöÇΓöÇ Homepage Settings (full editor) ΓöÇΓöÇ */}
           <div style={{ marginTop: 28, padding: "22px 24px", background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER2}`, borderRadius: 14 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 4 }}>🌐 Homepage Editor</div>
-            <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>Edit all homepage content — leave any field empty to revert to default text</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: TEXT, marginBottom: 4 }}>≡ƒîÉ Homepage Editor</div>
+            <div style={{ fontSize: 12, color: MUTED, marginBottom: 20 }}>Edit all homepage content ΓÇö leave any field empty to revert to default text</div>
 
             {/* Sub-tabs */}
             {(() => {
               const hpTabs: { k: typeof homepageTab; label: string }[] = [
-                { k: "basic", label: "⚙️ Basic" },
-                { k: "hero", label: "🦸 Hero" },
-                { k: "features", label: "✨ Features" },
-                { k: "stats", label: "📊 Stats" },
-                { k: "steps", label: "🚀 Steps" },
-                { k: "pricing", label: "💰 Pricing" },
+                { k: "basic", label: "ΓÜÖ∩╕Å Basic" },
+                { k: "hero", label: "≡ƒª╕ Hero" },
+                { k: "features", label: "Γ£¿ Features" },
+                { k: "stats", label: "≡ƒôè Stats" },
+                { k: "steps", label: "≡ƒÜÇ Steps" },
+                { k: "pricing", label: "≡ƒÆ░ Pricing" },
               ];
               return (
                 <div style={{ display: "flex", gap: 4, marginBottom: 20, flexWrap: "wrap" }}>
@@ -2563,7 +2563,7 @@ export default function Admin() {
                     style={{ ...inputStyle, appearance: "none" as const, width: "50%" }}>
                     <option value="en">English</option>
                     <option value="en">English</option>
-                    <option value="fr">Français</option>
+                    <option value="fr">Fran├ºais</option>
                   </select>
                 </div>
               </div>
@@ -2673,7 +2673,7 @@ export default function Admin() {
                 ] as const).map(s => (
                   <div key={s.n} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "12px 14px", background: "rgba(255,255,255,0.02)", borderRadius: 10, border: `1px solid ${BORDER}` }}>
                     <div>
-                      <label style={{ fontSize: 10, color: MUTED, display: "block", marginBottom: 5 }}>Step {s.n} — Title</label>
+                      <label style={{ fontSize: 10, color: MUTED, display: "block", marginBottom: 5 }}>Step {s.n} ΓÇö Title</label>
                       <input type="text" value={(homepageForm as Record<string,string>)[s.ll]}
                         onChange={e => setHomepageForm(p => ({ ...p, [s.ll]: e.target.value }))}
                         style={{ ...inputStyle, fontSize: 12 }}
@@ -2689,12 +2689,12 @@ export default function Admin() {
                   </div>
                 ))}
                 <div style={{ marginTop: 10, padding: "14px", background: "rgba(99,102,241,0.05)", borderRadius: 10, border: `1px solid rgba(99,102,241,0.2)` }}>
-                  <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, marginBottom: 12 }}>🎯 Call-to-Action Banner (CTA)</div>
+                  <div style={{ fontSize: 12, color: ACCENT, fontWeight: 700, marginBottom: 12 }}>≡ƒÄ» Call-to-Action Banner (CTA)</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <div>
                       <label style={{ fontSize: 10, color: MUTED, display: "block", marginBottom: 5 }}>Title</label>
                       <input type="text" value={homepageForm.ctaTitle} onChange={e => setHomepageForm(p => ({ ...p, ctaTitle: e.target.value }))}
-                        placeholder="Start Now — Free" style={{ ...inputStyle }}
+                        placeholder="Start Now ΓÇö Free" style={{ ...inputStyle }}
                         onFocus={e => e.currentTarget.style.borderColor = ACCENT} onBlur={e => e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"} />
                     </div>
                     <div>
@@ -2714,7 +2714,7 @@ export default function Admin() {
 
                 {/* Info box */}
                 <div style={{ padding: "12px 16px", background: "rgba(34,211,238,0.06)", border: "1px solid rgba(34,211,238,0.2)", borderRadius: 10, fontSize: 12, color: ACCENT2 }}>
-                  ⚡ <strong>Smart sync:</strong> Features and prices are pulled automatically from the <strong>Plans</strong> tab — any edit there reflects instantly on the homepage.
+                  ΓÜí <strong>Smart sync:</strong> Features and prices are pulled automatically from the <strong>Plans</strong> tab ΓÇö any edit there reflects instantly on the homepage.
                 </div>
 
                 {/* Global fields */}
@@ -2751,7 +2751,7 @@ export default function Admin() {
                   </div>
                   <div>
                     <label style={{ fontSize: 11, color: MUTED, display: "block", marginBottom: 6 }}>
-                      Featured plan (slug) <span style={{ color: "rgba(255,255,255,0.3)" }}>— gets the colored border</span>
+                      Featured plan (slug) <span style={{ color: "rgba(255,255,255,0.3)" }}>ΓÇö gets the colored border</span>
                     </label>
                     <input type="text" dir="ltr" value={homepageForm.popularSlug} onChange={e => setHomepageForm(p => ({ ...p, popularSlug: e.target.value }))}
                       placeholder="pro" style={{ ...inputStyle }}
@@ -2762,7 +2762,7 @@ export default function Admin() {
                 {/* Per-plan href from actual plans */}
                 {adminPlans.length > 0 && (
                   <div style={{ padding: "14px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 12, border: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 12, color: TEXT, fontWeight: 700, marginBottom: 14 }}>🔗 "Start Now" button links per plan</div>
+                    <div style={{ fontSize: 12, color: TEXT, fontWeight: 700, marginBottom: 14 }}>≡ƒöù "Start Now" button links per plan</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {adminPlans.filter(p => p.is_active).map(plan => (
                         <div key={plan.id} style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 10, alignItems: "center" }}>
@@ -2784,11 +2784,11 @@ export default function Admin() {
                 {/* Live preview of plan features */}
                 {adminPlans.length > 0 && (
                   <div style={{ padding: "14px 16px", background: "rgba(255,255,255,0.02)", borderRadius: 12, border: `1px solid ${BORDER}` }}>
-                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, marginBottom: 12 }}>👁 Plan features preview (auto-fetched)</div>
+                    <div style={{ fontSize: 12, color: MUTED, fontWeight: 700, marginBottom: 12 }}>≡ƒæü Plan features preview (auto-fetched)</div>
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {adminPlans.filter(p => p.is_active).map(plan => (
                         <div key={plan.id} style={{ padding: "10px 14px", background: "rgba(255,255,255,0.02)", borderRadius: 8, border: `1px solid ${BORDER}` }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>{plan.name} — <span style={{ color: MUTED, fontFamily: "monospace" }}>${plan.price_monthly}/mo</span></div>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: TEXT, marginBottom: 6 }}>{plan.name} ΓÇö <span style={{ color: MUTED, fontFamily: "monospace" }}>${plan.price_monthly}/mo</span></div>
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                             {[
                               `${plan.monthly_credits} credits/mo`,
@@ -2817,11 +2817,11 @@ export default function Admin() {
                 color: "#fff", border: "none", padding: "11px 28px",
                 borderRadius: 10, fontSize: 13, fontWeight: 700,
                 cursor: homepageSaving ? "wait" : "pointer", fontFamily: "'Inter', sans-serif",
-              }}>{homepageSaving ? "⏳ Saving..." : "💾 Save All Settings"}</button>
+              }}>{homepageSaving ? "ΓÅ│ Saving..." : "≡ƒÆ╛ Save All Settings"}</button>
               <button onClick={() => setHomepageForm(EMPTY_HF)} style={{
                 background: SURFACE, border: `1px solid ${BORDER2}`, color: MUTED,
                 padding: "11px 18px", borderRadius: 10, fontSize: 12, cursor: "pointer", fontFamily: "'Inter', sans-serif",
-              }}>🔄 Reset</button>
+              }}>≡ƒöä Reset</button>
             </div>
 
             {homepageMsg && (
@@ -2837,7 +2837,7 @@ export default function Admin() {
         </div>
         )}
 
-        {/* ══════════ PAYMENTS TAB ══════════ */}
+        {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ PAYMENTS TAB ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
         {activeTab === "payments" && (
           <div style={{ maxWidth: 900, display: "flex", flexDirection: "column", gap: 20 }}>
 
@@ -2852,14 +2852,14 @@ export default function Admin() {
                   color: payFilter === f ? ACCENT : MUTED,
                   transition: "all 0.15s",
                 }}>
-                  {f === "pending" ? "⏳ Pending" : f === "approved" ? "✅ Approved" : f === "rejected" ? "❌ Rejected" : "🗂 All"}
+                  {f === "pending" ? "ΓÅ│ Pending" : f === "approved" ? "Γ£à Approved" : f === "rejected" ? "Γ¥î Rejected" : "≡ƒùé All"}
                 </button>
               ))}
               <button onClick={() => loadPayReqs(payFilter)} style={{
                 marginLeft: "auto", padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
                 cursor: "pointer", fontFamily: "'Inter', sans-serif",
                 border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED,
-              }}>🔄 Refresh</button>
+              }}>≡ƒöä Refresh</button>
             </div>
 
             {payMsg && (
@@ -2874,7 +2874,7 @@ export default function Admin() {
               <div style={{ textAlign: "center", color: MUTED, padding: 40 }}>Loading...</div>
             ) : payReqs.length === 0 ? (
               <div style={{ ...cardStyle, textAlign: "center", padding: 48, color: MUTED }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📭</div>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>≡ƒô¡</div>
                 <div style={{ fontSize: 15, fontWeight: 600 }}>No {payFilter === "all" ? "" : payFilter} payment requests</div>
               </div>
             ) : payReqs.map(req => {
@@ -2898,13 +2898,13 @@ export default function Admin() {
                         </span>
                       </div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: TEXT, marginBottom: 4 }}>
-                        {req.type === "plan_upgrade" ? `Plan upgrade → ${req.planName ?? req.planSlug ?? `Plan #${req.planId}`}` : `Points purchase: +${req.pointsAmount?.toLocaleString()} credits`}
+                        {req.type === "plan_upgrade" ? `Plan upgrade ΓåÆ ${req.planName ?? req.planSlug ?? `Plan #${req.planId}`}` : `Points purchase: +${req.pointsAmount?.toLocaleString()} credits`}
                       </div>
                       <div style={{ fontSize: 12, color: MUTED }}>
-                        👤 {req.userName ?? "Unknown"} &nbsp;·&nbsp; {req.userEmail ?? "no email"} &nbsp;·&nbsp; Current plan: <span style={{ color: ACCENT }}>{req.userPlan}</span>
+                        ≡ƒæñ {req.userName ?? "Unknown"} &nbsp;┬╖&nbsp; {req.userEmail ?? "no email"} &nbsp;┬╖&nbsp; Current plan: <span style={{ color: ACCENT }}>{req.userPlan}</span>
                       </div>
                       <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-                        💳 Payment method: <span style={{ color: TEXT, fontWeight: 600 }}>{req.paymentMethod}</span>
+                        ≡ƒÆ│ Payment method: <span style={{ color: TEXT, fontWeight: 600 }}>{req.paymentMethod}</span>
                       </div>
                     </div>
                   </div>
@@ -2916,7 +2916,7 @@ export default function Admin() {
                       border: `1px solid ${BORDER}`, background: SURFACE, color: MUTED,
                       cursor: "pointer", fontFamily: "'Inter', sans-serif",
                     }}>
-                      {expandedProof === req.id ? "▲ Hide Proof" : "▼ View Payment Proof"}
+                      {expandedProof === req.id ? "Γû▓ Hide Proof" : "Γû╝ View Payment Proof"}
                     </button>
                     {expandedProof === req.id && (
                       <div style={{ marginTop: 12, padding: "14px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: `1px solid ${BORDER}` }}>
@@ -2956,7 +2956,7 @@ export default function Admin() {
                             border: "1px solid rgba(34,197,94,0.3)", color: GREEN,
                             opacity: payActionId === req.id ? 0.6 : 1,
                           }}>
-                          {payActionId === req.id ? "Processing..." : "✅ Approve"}
+                          {payActionId === req.id ? "Processing..." : "Γ£à Approve"}
                         </button>
                         <button
                           disabled={payActionId === req.id}
@@ -2969,7 +2969,7 @@ export default function Admin() {
                             border: "1px solid rgba(239,68,68,0.25)", color: RED,
                             opacity: payActionId === req.id ? 0.6 : 1,
                           }}>
-                          ❌ Reject
+                          Γ¥î Reject
                         </button>
                       </div>
                     </div>

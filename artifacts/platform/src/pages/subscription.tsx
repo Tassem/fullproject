@@ -117,11 +117,6 @@ export default function Subscription() {
     return (localStorage.getItem("pricing_tab_preference") as "platform" | "byok") || "platform";
   });
 
-  const handleTabChange = (tab: "platform" | "byok") => {
-    setActiveTab(tab);
-    localStorage.setItem("pricing_tab_preference", tab);
-  };
-
   useEffect(() => {
     const token = localStorage.getItem("pro_token");
     if (!token) return;
@@ -130,6 +125,23 @@ export default function Subscription() {
       .then(d => { setData(d); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  const usage = data?.usage;
+  const currentPlan = data?.currentPlan || "";
+  const plans = data?.plans || [];
+
+  const activePlan = useMemo(() => plans.find(p => p.slug === currentPlan), [plans, currentPlan]);
+
+  const handleTabChange = (tab: "platform" | "byok") => {
+    setActiveTab(tab);
+    localStorage.setItem("pricing_tab_preference", tab);
+  };
+
+  const filteredPlans = useMemo(() => {
+    return [...plans]
+      .filter(p => p.plan_mode === activeTab)
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }, [plans, activeTab]);
 
   if (loading) {
     return (
@@ -142,11 +154,11 @@ export default function Subscription() {
     );
   }
 
-  if (!data) return <div className="text-muted-foreground">Could not load subscription data.</div>;
-  const usage = data.usage;
-  const { currentPlan, plans } = data;
+  if (!data || !usage) return <div className="text-muted-foreground">Could not load subscription data.</div>;
 
+  // Variables derived after data is guaranteed
   const { monthly, purchased, total } = getUserCredits(usage);
+  const accent = PLAN_ACCENT[currentPlan] ?? PLAN_ACCENT.free;
 
   const creditsUsed = usage.monthly_allocation > 0
     ? usage.monthly_allocation - monthly
@@ -156,11 +168,8 @@ export default function Subscription() {
     ? new Date(usage.credits_reset_date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
     : null;
 
-  const filteredPlans = useMemo(() => {
-    return [...plans]
-      .filter(p => p.plan_mode === activeTab)
-      .sort((a, b) => a.sort_order - b.sort_order);
-  }, [plans, activeTab]);
+
+
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500" dir="ltr">

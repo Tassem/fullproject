@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { UpgradeModal } from "@/components/SaaS/UpgradeModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { OpenRouterKeyModal } from "@/components/OpenRouterKeyModal";
-import { useAuth } from "@/contexts/auth";
 
 const AUTH = () => ({ Authorization: `Bearer ${localStorage.getItem("pro_token")}` });
 
@@ -28,9 +27,8 @@ interface BillingStatus {
     has_image_generator: boolean; has_api_access: boolean;
     has_overlay_upload: boolean; has_custom_watermark: boolean;
     has_ai_image_generation: boolean;
-    plan_mode: "platform" | "byok";
+    plan_mode?: string;
   } | null;
-  has_openrouter_key: boolean;
   /** effective = plan + addons merged — use this for UI display */
   effective: {
     max_sites: number; max_templates: number | null;
@@ -49,6 +47,8 @@ interface BillingStatus {
     };
     sites: { used: number; max: number; percentage: number };
   };
+  has_openrouter_key?: boolean;
+  openrouter_key_hint?: string | null;
 }
 
 interface Plan {
@@ -372,16 +372,16 @@ const REQ_STATUS: Record<string, { label: string; cls: string }> = {
 export function Billing() {
   const qc = useQueryClient();
   const [selectedPlan, setSelectedPlan]       = useState<Plan | null>(null);
+  const [activeTab, setActiveTab]               = useState<"platform" | "byok">("platform");
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [customPoints, setCustomPoints]         = useState(50);
   const [pointsForPurchase, setPointsForPurchase] = useState(50);
   const [showHistory, setShowHistory]           = useState(false);
   const [addonModalOpen, setAddonModalOpen]     = useState(false);
   const [selectedAddon, setSelectedAddon]       = useState<PlanAddon | null>(null);
-  const [keyModalOpen, setKeyModalOpen]         = useState(false);
-  const { user: authUser } = useAuth();
+  const [showKeyModal, setShowKeyModal]         = useState(false);
 
-  const { data: billing, isLoading: billingLoading } = useQuery<BillingStatus>({
+  const { data: billing, isLoading: billingLoading, refetch } = useQuery<BillingStatus>({
     queryKey: ["billing", "status"],
     queryFn: async () => {
       const r = await fetch("/api/billing/status", { headers: AUTH() });
@@ -506,47 +506,6 @@ export function Billing() {
         </div>
       </div>
 
-      {/* BYOK Key Management — Only for BYOK plans */}
-      {billing?.plan?.plan_mode === "byok" && (
-        <div className="animate-in fade-in slide-in-from-top-4 duration-500">
-          <div className="rounded-2xl border border-orange-500/20 bg-gradient-to-br from-orange-500/[0.07] to-transparent p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-            <div className="flex items-center gap-5">
-              <div className="w-14 h-14 rounded-2xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shrink-0">
-                <Key className="w-7 h-7 text-orange-500" />
-              </div>
-              <div>
-                <h2 className="text-xl font-black text-white tracking-tight">OpenRouter API Configuration</h2>
-                <p className="text-sm text-zinc-400 mt-1 max-w-md">
-                  Your current plan requires you to provide your own API key. 
-                  {!billing.has_openrouter_key && <span className="text-orange-400 font-bold ml-1">Key is missing! generation will fail.</span>}
-                </p>
-                {billing.has_openrouter_key && (
-                  <div className="flex items-center gap-2 mt-3">
-                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-black text-emerald-400 uppercase tracking-widest">
-                      <ShieldCheck className="w-3 h-3" /> Key Configured
-                    </div>
-                    {authUser?.openrouter_key_hint && (
-                      <span className="text-[10px] text-zinc-500 font-mono font-bold">Hint: ...{authUser.openrouter_key_hint}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <Button 
-              onClick={() => setKeyModalOpen(true)}
-              className={cn(
-                "h-12 px-8 rounded-xl font-black uppercase tracking-widest transition-all",
-                billing.has_openrouter_key 
-                  ? "bg-white/5 hover:bg-white/10 text-white border border-white/10" 
-                  : "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_20px_rgba(234,88,12,0.3)]"
-              )}
-            >
-              {billing.has_openrouter_key ? "Update API Key" : "Configure API Key"}
-            </Button>
-          </div>
-        </div>
-      )}
-
       {/* Current Plan + Points Wallet */}
       {billing && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -623,7 +582,78 @@ export function Billing() {
                 icon={Zap} color="text-amber-400"
               />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* BYOK Key Management */}
+          {billing?.plan?.plan_mode === "byok" && (
+            <div className="rounded-2xl border border-white/10 bg-zinc-900/50 p-6 mb-8 backdrop-blur-sm">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-lg font-black text-white tracking-tight flex items-center gap-2">
+                    🔑 OpenRouter API Key
+                  </h3>
+                  <p className="text-xs text-zinc-500">Required for AI generation on your plan</p>
+                </div>
+                <Badge variant={billing?.has_openrouter_key ? "default" : "destructive"} className="h-6 font-bold uppercase tracking-widest text-[9px]">
+                  {billing?.has_openrouter_key ? "Connected" : "Missing Key"}
+                </Badge>
+              </div>
+
+              {billing?.has_openrouter_key ? (
+                <div className="flex items-center justify-between p-4 rounded-xl bg-black/40 border border-white/5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center border border-green-500/20">
+                      <ShieldCheck className="w-5 h-5 text-green-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">Active Connection</p>
+                      <p className="text-[10px] text-zinc-500 font-mono">
+                        Key Hint: <span className="text-zinc-300">...{(billing as any).openrouter_key_hint || "sk-or-..."}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setShowKeyModal(true)}
+                    variant="ghost"
+                    className="h-9 px-4 rounded-lg text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/5"
+                  >
+                    Update Key
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between p-4 rounded-xl bg-orange-500/5 border border-orange-500/10">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center border border-orange-500/20">
+                      <Zap className="w-5 h-5 text-orange-500" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white">Setup Required</p>
+                      <p className="text-[10px] text-zinc-500">Connect your OpenRouter key to start generating</p>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => setShowKeyModal(true)}
+                    className="h-9 px-4 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-bold uppercase tracking-wider"
+                  >
+                    Connect Key
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {showKeyModal && (
+            <OpenRouterKeyModal
+              open={showKeyModal}
+              onClose={() => setShowKeyModal(false)}
+              onSuccess={() => {
+                setShowKeyModal(false);
+                refetch();
+              }}
+              currentHint={(billing as any).openrouter_key_hint}
+            />
+          )}
+
+          {/* Usage Stats (Monthly Credits) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* 1. Plan Monthly Credits */}
                 <div className="space-y-3 p-4 rounded-xl bg-white/[0.02] border border-white/5">
                   <div className="flex items-center justify-between">
@@ -1117,6 +1147,7 @@ export function Billing() {
         />
       )}
 
+      {/* Upgrade Modal */}
       {selectedPlan && (
         <UpgradeModal
           open={upgradeModalOpen}
@@ -1132,13 +1163,6 @@ export function Billing() {
           lastRejected={myRequests.find(r => r.planId === selectedPlan.id && r.status === "rejected") ?? null}
         />
       )}
-
-      <OpenRouterKeyModal
-        open={keyModalOpen}
-        onClose={() => setKeyModalOpen(false)}
-        onSuccess={() => qc.invalidateQueries({ queryKey: ["billing", "status"] })}
-        currentHint={authUser?.openrouter_key_hint}
-      />
     </div>
   );
 }

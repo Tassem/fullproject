@@ -697,7 +697,7 @@ async function generateAndSend(
     aiTxId = aiResult.transactionId;
 
     try {
-      const resPrompt = await buildPromptFromCustomPrompt(session.aiPrompt, false, session.aiStyle || "photorealistic");
+      const resPrompt = await buildPromptFromCustomPrompt(session.aiPrompt, false, session.aiStyle || "photorealistic", session.userId);
       const prompt = resPrompt.finalPrompt;
       const port = process.env.PORT || 3001;
       const nanoRes = await fetch(`http://127.0.0.1:${port}/api/nanobanana/v1/images/generations`, {

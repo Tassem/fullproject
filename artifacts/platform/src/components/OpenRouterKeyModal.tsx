@@ -23,14 +23,13 @@ export function OpenRouterKeyModal({ open, onClose, onSuccess, currentHint }: Op
     setError(null);
 
     try {
-      const res = await fetch("/api/me/provider-keys", {
-        method: "PUT",
+      const res = await fetch("/api/user/openrouter-key", {
+        method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("pro_token")}`,
         },
         body: JSON.stringify({
-          provider: "openrouter",
           key: key.trim(),
         }),
       });

@@ -1,7 +1,8 @@
-import { db } from "@workspace/db";
-import { settingsTable } from "@workspace/db";
+import { db, settingsTable, usersTable, plansTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { resolveProviderKey } from "./providerKeyResolver";
 
-export async function getAiConfig() {
+export async function getAiConfig(userId?: number) {
   const rows = await db.select().from(settingsTable);
   const sett: Record<string, string> = {};
   for (const r of rows) sett[r.key] = r.value;
@@ -33,6 +34,28 @@ export async function getAiConfig() {
     apiKey = sett["custom_ai_2_key"] || "";
     modelText = sett["custom_ai_2_model_main"] || "gpt-4o-mini";
     modelVision = sett["custom_ai_2_model_image_analysis"] || "gpt-4o";
+  }
+
+  // --- BYOK Integration ---
+  if (userId && genProvider === "openrouter") {
+    const resolved = await resolveProviderKey(userId, "openrouter");
+    if (resolved && resolved.key) {
+      apiKey = resolved.key;
+      console.log(`[BYOK] Using user-provided key for user ${userId}`);
+    } else {
+      // Check if user is on BYOK plan
+      const [user] = await db.select({ plan_mode: plansTable.plan_mode })
+        .from(usersTable)
+        .leftJoin(plansTable, eq(usersTable.plan, plansTable.slug))
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+        
+      if (user?.plan_mode === "byok") {
+        const err: any = new Error("BYOK_KEY_MISSING");
+        err.code = "BYOK_KEY_MISSING";
+        throw err;
+      }
+    }
   }
 
   if (!baseUrl || !apiKey) {
@@ -154,10 +177,11 @@ function extractJson(content: string): any {
 
 export async function buildPromptFromTitle(
   titleText: string,
-  style = "photorealistic"
+  style = "photorealistic",
+  userId?: number
 ): Promise<PromptDirectorResult> {
   const settings = await getDirectorSettings();
-  const aiConf = await getAiConfig();
+  const aiConf = await getAiConfig(userId);
 
   if (!aiConf.baseUrl || !aiConf.apiKey) throw new Error("AI credentials not configured.");
 
@@ -255,7 +279,8 @@ OUTPUT FORMAT (strict JSON):
 
 export async function buildPromptFromImageAnalysis(
   imageUrl: string,
-  style = "photorealistic"
+  style = "photorealistic",
+  userId?: number
 ): Promise<PromptDirectorResult> {
   let base64 = imageUrl;
   try {
@@ -275,7 +300,7 @@ export async function buildPromptFromImageAnalysis(
   }
 
   const settings = await getDirectorSettings();
-  const aiConf = await getAiConfig();
+  const aiConf = await getAiConfig(userId);
 
   if (!aiConf.baseUrl || !aiConf.apiKey) throw new Error("AI credentials not configured.");
   
@@ -361,7 +386,8 @@ OUTPUT (strict JSON):
 export async function buildPromptFromCustomPrompt(
   customPrompt: string,
   enhance = false,
-  style = "photorealistic"
+  style = "photorealistic",
+  userId?: number
 ): Promise<PromptDirectorResult> {
   const settings = await getDirectorSettings();
   
@@ -374,7 +400,7 @@ export async function buildPromptFromCustomPrompt(
     };
   }
 
-  const aiConf = await getAiConfig();
+  const aiConf = await getAiConfig(userId);
   if (!aiConf.baseUrl || !aiConf.apiKey) throw new Error("AI credentials not configured.");
 
   const sys = buildSystemPrompt(settings);
